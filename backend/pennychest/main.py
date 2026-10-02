@@ -11,6 +11,7 @@ from pennychest.accounts.routes import router as accounts_router
 from pennychest.core.database import SessionLocal, get_db
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
+from pennychest.transactions.routes import router as transactions_router
 
 # Import all models so they're registered with Base.metadata
 from pennychest.accounts.models import Base  # noqa: F401
@@ -53,6 +54,7 @@ async def no_framing(request: Request, call_next):
 
 
 app.include_router(accounts_router)
+app.include_router(transactions_router)
 
 
 @app.get("/api/health")
