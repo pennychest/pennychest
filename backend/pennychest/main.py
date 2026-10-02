@@ -21,6 +21,8 @@ from pennychest.core.lookup_models import (  # noqa: F401
     ImportSourceType,
     MatchType,
 )
+from pennychest.imports.models import ImportBatch, RawImportRow  # noqa: F401
+from pennychest.rules.models import Rule  # noqa: F401
 from pennychest.transactions.models import Posting, Transaction  # noqa: F401
 
 
