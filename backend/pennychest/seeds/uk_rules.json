@@ -1,0 +1,22 @@
+[
+  {"pattern": "TESCO", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "SAINSBURY", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "ASDA", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "ALDI", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "LIDL", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "MORRISONS", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "WAITROSE", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "CO-OP", "match_type": "substring", "target_account": "Expenses:Food:Groceries", "priority": 10},
+  {"pattern": "DELIVEROO", "match_type": "substring", "target_account": "Expenses:Food:Takeaway", "priority": 10},
+  {"pattern": "JUST EAT", "match_type": "substring", "target_account": "Expenses:Food:Takeaway", "priority": 10},
+  {"pattern": "UBER EATS", "match_type": "substring", "target_account": "Expenses:Food:Takeaway", "priority": 10},
+  {"pattern": "TFL", "match_type": "substring", "target_account": "Expenses:Transport:Public", "priority": 10},
+  {"pattern": "TRANSPORT FOR LONDON", "match_type": "substring", "target_account": "Expenses:Transport:Public", "priority": 10},
+  {"pattern": "TRAINLINE", "match_type": "substring", "target_account": "Expenses:Transport:Public", "priority": 10},
+  {"pattern": "NETFLIX", "match_type": "substring", "target_account": "Expenses:Entertainment:Subscriptions", "priority": 10},
+  {"pattern": "SPOTIFY", "match_type": "substring", "target_account": "Expenses:Entertainment:Subscriptions", "priority": 10},
+  {"pattern": "AMAZON PRIME", "match_type": "substring", "target_account": "Expenses:Entertainment:Subscriptions", "priority": 10},
+  {"pattern": "COUNCIL TAX", "match_type": "substring", "target_account": "Expenses:Housing:CouncilTax", "priority": 10},
+  {"pattern": "AMAZON", "match_type": "substring", "target_account": "Expenses:Shopping", "priority": 5},
+  {"pattern": "SALARY", "match_type": "substring", "target_account": "Income:Salary", "priority": 10}
+]
