@@ -13,6 +13,7 @@ from pennychest.auth.routes import require_session
 from pennychest.auth.routes import router as auth_router
 from pennychest.budgets.routes import router as budgets_router
 from pennychest.core.database import SessionLocal, get_db
+from pennychest.dashboard.routes import router as dashboard_router
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
 from pennychest.imports.routes import router as imports_router
@@ -79,6 +80,7 @@ app.include_router(imports_router)
 app.include_router(ai_router)
 app.include_router(taps_router)
 app.include_router(budgets_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/api/health")
