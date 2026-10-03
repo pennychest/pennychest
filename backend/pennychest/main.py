@@ -13,6 +13,7 @@ from pennychest.ai.routes import router as ai_router
 from pennychest.auth.routes import require_session
 from pennychest.auth.routes import router as auth_router
 from pennychest.budgets.routes import router as budgets_router
+from pennychest.chat.routes import router as chat_router
 from pennychest.core.database import SessionLocal, get_db
 from pennychest.dashboard.routes import router as dashboard_router
 from pennychest.core.seed import seed_lookup_tables
@@ -39,6 +40,7 @@ from pennychest.ai.models import AIRequestLog  # noqa: F401
 from pennychest.taps.models import CardTap, WalletCard  # noqa: F401
 from pennychest.auth.models import AuthSession  # noqa: F401
 from pennychest.budgets.models import Budget  # noqa: F401
+from pennychest.chat.models import ChatConversation, ChatMessage  # noqa: F401
 
 
 @asynccontextmanager
@@ -83,6 +85,7 @@ app.include_router(taps_router)
 app.include_router(budgets_router)
 app.include_router(dashboard_router)
 app.include_router(actions_router)
+app.include_router(chat_router)
 
 
 @app.get("/api/health")
