@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from pennychest.accounts.routes import router as accounts_router
 from pennychest.ai.routes import router as ai_router
+from pennychest.auth.routes import require_session
+from pennychest.auth.routes import router as auth_router
 from pennychest.core.database import SessionLocal, get_db
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
@@ -32,6 +34,7 @@ from pennychest.rules.models import Rule  # noqa: F401
 from pennychest.transactions.models import Posting, Transaction  # noqa: F401
 from pennychest.ai.models import AIRequestLog  # noqa: F401
 from pennychest.taps.models import CardTap, WalletCard  # noqa: F401
+from pennychest.auth.models import AuthSession  # noqa: F401
 
 
 @asynccontextmanager
@@ -49,6 +52,8 @@ app = FastAPI(
     description="Self-hosted personal finance with real double-entry accounting",
     version="0.2.0",
     lifespan=lifespan,
+    # Every /api route needs a signed-in session unless auth.routes lists it as public.
+    dependencies=[Depends(require_session)],
 )
 
 
@@ -63,6 +68,7 @@ async def no_framing(request: Request, call_next):
     return response
 
 
+app.include_router(auth_router)
 app.include_router(accounts_router)
 app.include_router(transactions_router)
 app.include_router(rules_router)
