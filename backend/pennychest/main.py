@@ -15,6 +15,7 @@ from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_acc
 from pennychest.imports.routes import router as imports_router
 from pennychest.reports.routes import router as reports_router
 from pennychest.rules.routes import router as rules_router
+from pennychest.taps.routes import router as taps_router
 from pennychest.transactions.routes import router as transactions_router
 
 # Import all models so they're registered with Base.metadata
@@ -30,6 +31,7 @@ from pennychest.imports.models import ImportBatch, RawImportRow  # noqa: F401
 from pennychest.rules.models import Rule  # noqa: F401
 from pennychest.transactions.models import Posting, Transaction  # noqa: F401
 from pennychest.ai.models import AIRequestLog  # noqa: F401
+from pennychest.taps.models import CardTap, WalletCard  # noqa: F401
 
 
 @asynccontextmanager
@@ -67,6 +69,7 @@ app.include_router(rules_router)
 app.include_router(reports_router)
 app.include_router(imports_router)
 app.include_router(ai_router)
+app.include_router(taps_router)
 
 
 @app.get("/api/health")
