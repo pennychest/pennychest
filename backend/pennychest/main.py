@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pennychest.accounts.routes import router as accounts_router
+from pennychest.ai.routes import router as ai_router
 from pennychest.core.database import SessionLocal, get_db
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
@@ -64,6 +65,7 @@ app.include_router(transactions_router)
 app.include_router(rules_router)
 app.include_router(reports_router)
 app.include_router(imports_router)
+app.include_router(ai_router)
 
 
 @app.get("/api/health")
