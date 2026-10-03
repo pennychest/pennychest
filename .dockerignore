@@ -1,0 +1,20 @@
+# Keep secrets, personal data and host-built artifacts out of images and remote builders.
+.git
+.env
+.env.*
+docs
+
+# Real bank statements used by the importer tests
+backend/tests/fixtures
+
+# Built for the host's architecture; the image installs its own
+frontend/node_modules
+frontend/dist
+backend/.venv
+backend/*.egg-info
+
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+uploads

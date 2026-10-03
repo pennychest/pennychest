@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pennychest
+      POSTGRES_PASSWORD: pennychest
+      POSTGRES_DB: pennychest
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pennychest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn pennychest.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      PENNYCHEST_DATABASE_URL: postgresql+psycopg2://pennychest:pennychest@db:5432/pennychest
+      PENNYCHEST_UPLOAD_DIR: /data/uploads
+    volumes:
+      - ./backend:/app
+      # A pennychest-plugins clone next to this repository, so plugins can be installed for
+      # development: pip install -e /plugins/<name>
+      - ../pennychest-plugins:/plugins
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  uploads:

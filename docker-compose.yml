@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pennychest
+      POSTGRES_PASSWORD: pennychest
+      POSTGRES_DB: pennychest
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pennychest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Plugins to include, as pip requirements (see the Dockerfile and README)
+        PENNYCHEST_PLUGINS: ${PENNYCHEST_PLUGINS:-}
+    environment:
+      PENNYCHEST_DATABASE_URL: postgresql+psycopg2://pennychest:pennychest@db:5432/pennychest
+      PENNYCHEST_UPLOAD_DIR: /data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:
