@@ -18,6 +18,7 @@ from pennychest.transactions.routes import router as transactions_router
 
 # Import all models so they're registered with Base.metadata
 from pennychest.accounts.models import Base  # noqa: F401
+from pennychest.settings.models import AppSetting  # noqa: F401
 from pennychest.core.lookup_models import (  # noqa: F401
     BudgetPeriod,
     CategorisationSource,
