@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pennychest.accounts.routes import router as accounts_router
+from pennychest.actions.changes import router as changes_router
 from pennychest.actions.routes import router as actions_router
 from pennychest.ai.routes import router as ai_router
 from pennychest.auth.routes import require_session
@@ -41,6 +42,7 @@ from pennychest.taps.models import CardTap, WalletCard  # noqa: F401
 from pennychest.auth.models import AuthSession  # noqa: F401
 from pennychest.budgets.models import Budget  # noqa: F401
 from pennychest.chat.models import ChatConversation, ChatMessage  # noqa: F401
+from pennychest.actions.models import ActionChange  # noqa: F401
 
 
 @asynccontextmanager
@@ -86,6 +88,7 @@ app.include_router(budgets_router)
 app.include_router(dashboard_router)
 app.include_router(actions_router)
 app.include_router(chat_router)
+app.include_router(changes_router)
 
 
 @app.get("/api/health")
