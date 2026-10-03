@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="apple-touch-icon" href="/pwa-192x192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>PennyChest</title>
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #ffffff;
+        transition: opacity 0.4s ease;
+      }
+      #splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      @keyframes logo-pop {
+        0%   { opacity: 0; transform: scale(0) rotate(-8deg); }
+        65%  { opacity: 1; transform: scale(1.12) rotate(3deg); }
+        100% { opacity: 1; transform: scale(1) rotate(0deg); }
+      }
+
+      #splash-logo {
+        width: 96px;
+        height: 96px;
+        opacity: 0;
+        transform: scale(0);
+      }
+      #splash-logo.pop {
+        animation: logo-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      }
+
+      #splash h1 {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+      }
+      #splash h1 .penny { color: #D4A017; }
+      #splash h1 .chest { color: #2A6B2A; }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <img id="splash-logo" src="/logo.png" alt="" />
+      <h1><span class="penny">Penny</span><span class="chest">Chest</span></h1>
+    </div>
+    <div id="root"></div>
+    <script>
+      // Both conditions must be true before we dismiss: logo loaded + React rendered
+      var _logoReady = false;
+      var _reactReady = false;
+
+      function _tryDismiss() {
+        if (!_logoReady || !_reactReady) return;
+        // Small pause so the pop animation has time to finish
+        setTimeout(function() {
+          var splash = document.getElementById('splash');
+          if (!splash) return;
+          splash.classList.add('hide');
+          splash.addEventListener('transitionend', function() { splash.remove(); }, { once: true });
+        }, 300);
+      }
+
+      // Expose for main.tsx to call
+      window.__splashReactReady = function() {
+        _reactReady = true;
+        _tryDismiss();
+      };
+
+      var logo = document.getElementById('splash-logo');
+      function onLogoLoad() {
+        logo.classList.add('pop');
+        _logoReady = true;
+        _tryDismiss();
+      }
+      logo.addEventListener('load', onLogoLoad);
+      // Already cached
+      if (logo.complete && logo.naturalWidth > 0) onLogoLoad();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
