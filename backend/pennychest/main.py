@@ -20,6 +20,8 @@ from pennychest.dashboard.routes import router as dashboard_router
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
 from pennychest.imports.routes import router as imports_router
+from pennychest.mcp.server import router as mcp_router
+from pennychest.mcp.tokens import router as mcp_tokens_router
 from pennychest.reports.routes import router as reports_router
 from pennychest.rules.routes import router as rules_router
 from pennychest.taps.routes import router as taps_router
@@ -43,6 +45,7 @@ from pennychest.auth.models import AuthSession  # noqa: F401
 from pennychest.budgets.models import Budget  # noqa: F401
 from pennychest.chat.models import ChatConversation, ChatMessage  # noqa: F401
 from pennychest.actions.models import ActionChange  # noqa: F401
+from pennychest.mcp.models import AccessToken, OAuthClient, OAuthCode  # noqa: F401
 
 
 @asynccontextmanager
@@ -89,6 +92,9 @@ app.include_router(dashboard_router)
 app.include_router(actions_router)
 app.include_router(chat_router)
 app.include_router(changes_router)
+app.include_router(mcp_tokens_router)
+# Outside /api: agents sign in with an access token rather than a session.
+app.include_router(mcp_router)
 
 
 @app.get("/api/health")
