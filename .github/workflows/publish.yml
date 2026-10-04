@@ -1,0 +1,73 @@
+name: Publish image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  # Dispatchable against a tag, to rebuild a release's image. A tag pushed by a
+  # workflow using GITHUB_TOKEN does not raise a push event — GitHub suppresses
+  # those to prevent recursion — so the release workflow builds its own image.
+  workflow_dispatch:
+
+concurrency:
+  # Not cancel-in-progress: a half-finished push leaves tags pointing at
+  # nothing in particular, and these runs are infrequent enough not to queue up.
+  group: publish-${{ github.ref }}
+
+jobs:
+  publish:
+    name: Build and push to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Built into Actions — GHCR needs no secret of our own.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out the image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # latest=false because the default would move `latest` on every push
+          # to main, shipping unreleased code to anyone who pulls the image
+          # without naming a tag. It is added back below for releases only.
+          flavor: latest=false
+          # From a v1.2.3 tag: 1.2.3, 1.2, 1, latest. The bare major is skipped
+          # while the version is 0.x, where it would mean little. Every push to
+          # main also gets a `main` tag for the bleeding edge, and every build a
+          # `sha-` tag as an immutable reference for rollbacks and bisecting.
+          # These are values, not YAML — a comment inside the block would be
+          # read as another tag.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=ref,event=branch
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

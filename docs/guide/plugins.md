@@ -4,7 +4,7 @@ Importers and exporters are plugins: Python packages that register themselves as
 
 ## Building them into the image
 
-Pass plugins as pip requirements when building, pinned to a tag or commit:
+The [published image](installation.md#the-image) has no plugins, so build your own from a checkout of this repository. Pass plugins as pip requirements when building, pinned to a tag or commit:
 
 ```bash
 docker build \

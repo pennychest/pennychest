@@ -1,0 +1,90 @@
+name: Release
+
+# Merging is the release. Commitizen reads the gitmoji on the new commits, and
+# if any of them warrant a version (see bump_map in .cz.toml) it bumps the
+# version, writes the changelog and tags. Everything else is a no-op.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Not cancel-in-progress: a half-finished release leaves a tag with no image.
+  group: release
+
+jobs:
+  release:
+    name: Bump, tag and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # push the bump commit, the tag and the release
+      packages: write   # push the image
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # commitizen reads history back to the last tag
+
+      - uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Bump the version if the commits warrant one
+        id: bump
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          before=$(uvx --from 'commitizen>=4,<5' cz version --project)
+          # Exits non-zero when nothing is releasable, so compare versions
+          # instead of trusting the exit code.
+          uvx --from 'commitizen>=4,<5' cz bump --yes \
+            --changelog-to-stdout --git-output-to-stderr > notes.md || true
+          after=$(uvx --from 'commitizen>=4,<5' cz version --project)
+
+          if [ "$before" = "$after" ]; then
+            echo "No releasable commits since v$before." >> "$GITHUB_STEP_SUMMARY"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git push --follow-tags origin HEAD:main
+
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=$after" >> "$GITHUB_OUTPUT"
+          echo "minor=${after%.*}" >> "$GITHUB_OUTPUT"
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the GitHub release
+        if: steps.bump.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ steps.bump.outputs.version }}
+        run: gh release create "$TAG" --title "$TAG" --notes-file notes.md
+
+      - uses: docker/setup-qemu-action@v4
+        if: steps.bump.outputs.released == 'true'
+
+      - uses: docker/setup-buildx-action@v4
+        if: steps.bump.outputs.released == 'true'
+
+      - name: Log in to GHCR
+        if: steps.bump.outputs.released == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        if: steps.bump.outputs.released == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ steps.bump.outputs.version }}
+            ghcr.io/${{ github.repository }}:${{ steps.bump.outputs.minor }}
+            ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,95 @@
+[tool.commitizen]
+name = "cz_customize"
+# The version lives here and is copied into the backend package, which the API reports.
+version = "0.1.0"
+version_files = ["backend/pyproject.toml:^version"]
+tag_format = "v$version"
+update_changelog_on_bump = true
+annotated_tag = true
+# Pre-1.0: a breaking change bumps the minor, rather than jumping to 1.0.0.
+major_version_zero = true
+
+[tool.commitizen.customize]
+# Which gitmoji cut a release, and how far the version moves. A commit whose
+# gitmoji is not listed here does not release at all — that is how docs, CI,
+# tests and formatting merge without producing a version nobody asked for.
+bump_pattern = "^(💥|✨|🔌|🔐|🤖|💬|📊|📈|📱|🧠|🧭|📦|🐛|🚑|🩹|🔒|⚡️|♻️|🗃️|🐳|🔧|⬆️|💄|🍱|🚸|♿️|🌐|🔊|⏪|🗑️|🔥)"
+
+# What appears in the changelog. Wider than the bump list, so documentation
+# shows up in release notes without producing a release of its own — and
+# narrow enough that merge commits and chores stay out.
+changelog_pattern = "^(💥|✨|🔌|🔐|🤖|💬|📊|📈|📱|🧠|🧭|📦|🐛|🚑|🩹|🔒|⚡️|♻️|🗃️|🐳|🔧|⬆️|💄|🍱|🚸|♿️|🌐|🔊|⏪|🗑️|🔥|📝)"
+
+# Reads the gitmoji as the change type so entries can be grouped, without
+# consuming it — the lookahead leaves it in the message, so it still shows in
+# the entry as well as choosing the section.
+commit_parser = "^(?=(?P<change_type>💥|✨|🔌|🔐|🤖|💬|📊|📈|📱|🧠|🧭|📦|🐛|🚑|🩹|🔒|⚡️|♻️|🗃️|🐳|🔧|⬆️|💄|🍱|🚸|♿️|🌐|🔊|⏪|🗑️|🔥|📝))(?P<message>.*)"
+change_type_order = ["Breaking", "Added", "Fixed", "Changed", "Documentation"]
+
+[tool.commitizen.customize.bump_map]
+"💥" = "MAJOR"   # breaking change
+"✨" = "MINOR"   # new feature
+"🔌" = "MINOR"   # plugins and integrations
+"🔐" = "MINOR"   # authentication
+"🤖" = "MINOR"   # AI features
+"💬" = "MINOR"   # chat
+"📊" = "MINOR"   # dashboards and charts
+"📈" = "MINOR"   # reports
+"📱" = "MINOR"   # mobile features
+"🧠" = "MINOR"   # learning and suggestions
+"🧭" = "MINOR"   # new pages and navigation
+"📦" = "MINOR"   # import, export and backup
+"🐛" = "PATCH"   # bug fix
+"🚑" = "PATCH"   # hotfix
+"🩹" = "PATCH"   # simple fix
+"🔒" = "PATCH"   # security fix
+"⚡️" = "PATCH"  # performance
+"♻️" = "PATCH"  # refactor
+"🗃️" = "PATCH"  # database migrations
+"🐳" = "PATCH"   # docker
+"🔧" = "PATCH"   # configuration
+"⬆️" = "PATCH"  # dependency bump
+"💄" = "PATCH"   # ui
+"🍱" = "PATCH"   # assets
+"🚸" = "PATCH"   # user experience
+"♿️" = "PATCH"  # accessibility
+"🌐" = "PATCH"   # localisation
+"🔊" = "PATCH"   # logging
+"⏪" = "PATCH"   # undo and revert
+"🗑️" = "PATCH"  # deprecation
+"🔥" = "PATCH"   # removal
+
+# Which section of the changelog each gitmoji lands in.
+[tool.commitizen.customize.change_type_map]
+"💥" = "Breaking"
+"✨" = "Added"
+"🔌" = "Added"
+"🔐" = "Added"
+"🤖" = "Added"
+"💬" = "Added"
+"📊" = "Added"
+"📈" = "Added"
+"📱" = "Added"
+"🧠" = "Added"
+"🧭" = "Added"
+"📦" = "Added"
+"🐛" = "Fixed"
+"🚑" = "Fixed"
+"🩹" = "Fixed"
+"🔒" = "Fixed"
+"⚡️" = "Changed"
+"♻️" = "Changed"
+"🗃️" = "Changed"
+"🐳" = "Changed"
+"🔧" = "Changed"
+"⬆️" = "Changed"
+"💄" = "Changed"
+"🍱" = "Changed"
+"🚸" = "Changed"
+"♿️" = "Changed"
+"🌐" = "Changed"
+"🔊" = "Changed"
+"⏪" = "Changed"
+"🗑️" = "Changed"
+"🔥" = "Changed"
+"📝" = "Documentation"
