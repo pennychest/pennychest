@@ -13,7 +13,6 @@ This starts:
 | `db`       | PostgreSQL                                               |
 | `api`      | FastAPI backend (runs migrations automatically on startup) |
 | `frontend` | React dev server with hot reload                         |
-| `ollama`   | Self-hosted LLM (optional, for [AI categorisation](ai-integration.md)) |
 
 The app is available at **http://localhost:8000**.
 

@@ -25,7 +25,7 @@ Anything else, such as 👷, ✅ or 🎨, merges without a release.
 
 ## Deploying
 
-This repository doesn't deploy anything itself. To run PennyChest on a host such as Fly.io, use the published image, or build your own with the [plugins](plugins.md) you want, and keep `/data` on a persistent volume.
+This repository doesn't deploy anything itself. To run PennyChest on a host such as Fly.io (see [Deploying to Fly.io](deploy-fly.md)), use the published image, or build your own with the [plugins](plugins.md) you want, and keep `/data` on a persistent volume.
 
 !!! warning
     Run a single machine when using SQLite, since the database lives on one volume.

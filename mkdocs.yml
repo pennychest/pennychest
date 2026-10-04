@@ -30,9 +30,13 @@ nav:
   - Home: index.md
   - Guide:
       - Installation: guide/installation.md
+      - Deploying to Fly.io: guide/deploy-fly.md
       - Plugins: guide/plugins.md
       - Signing in: guide/signing-in.md
+      - Categorisation: guide/categorisation.md
+      - Card taps: guide/card-taps.md
       - AI integration: guide/ai-integration.md
+      - AI agents (MCP): guide/mcp.md
   - Development:
       - Local setup: guide/development.md
       - CI and deployment: guide/deployment.md
