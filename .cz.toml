@@ -6,6 +6,8 @@ version_files = ["backend/pyproject.toml:^version"]
 tag_format = "v$version"
 update_changelog_on_bump = true
 annotated_tag = true
+# 🔖 is not in bump_pattern, so the release commit never cuts a release itself.
+bump_message = "🔖 Release v$new_version"
 # Pre-1.0: a breaking change bumps the minor, rather than jumping to 1.0.0.
 major_version_zero = true
 
