@@ -100,16 +100,19 @@ export function RulesPage() {
           </Button>
           <h1 className="text-3xl font-bold">Rules</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} title="Export rules as JSON">
-            <Download className="h-4 w-4 mr-1" /> Export
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={handleExport} title="Export rules as JSON" aria-label="Export rules">
+            <Download className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
           <Button
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             title="Import rules from JSON"
+            aria-label="Import rules"
           >
-            <Upload className="h-4 w-4 mr-1" /> Import
+            <Upload className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Import</span>
           </Button>
           <input
             ref={fileInputRef}
@@ -118,8 +121,9 @@ export function RulesPage() {
             onChange={handleImportFile}
             className="hidden"
           />
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 mr-1" /> New Rule
+          <Button onClick={() => setShowCreateDialog(true)} aria-label="New rule">
+            <Plus className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">New Rule</span>
           </Button>
         </div>
       </div>
@@ -236,7 +240,9 @@ function RuleDialog({
 }) {
   const queryClient = useQueryClient();
   const [pattern, setPattern] = useState(rule?.pattern ?? "");
-  const [matchTypeId, setMatchTypeId] = useState(String(rule?.match_type_id ?? matchTypes[0]?.id ?? ""));
+  const [chosenMatchTypeId, setMatchTypeId] = useState(String(rule?.match_type_id ?? ""));
+  // The dialog can mount before the match types load, so default to the first once they have
+  const matchTypeId = chosenMatchTypeId || String(matchTypes[0]?.id ?? "");
   const [targetAccountId, setTargetAccountId] = useState(String(rule?.target_account_id ?? ""));
   const [priority, setPriority] = useState(String(rule?.priority ?? 0));
   const [pickingCategory, setPickingCategory] = useState(false);

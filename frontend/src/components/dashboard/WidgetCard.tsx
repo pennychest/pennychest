@@ -35,7 +35,14 @@ export function WidgetCard({
   const title = widgetTitle(widget.type, widget.settings);
 
   return (
-    <Card className={cn(info.wide && "col-span-2", editing && "border-dashed")}>
+    <Card
+      className={cn(
+        info.wide && "col-span-2",
+        // Half width leaves no room for the editing controls on a phone
+        editing && "border-dashed",
+        editing && !info.wide && "col-span-2 sm:col-span-1",
+      )}
+    >
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
         <CardTitle className="text-sm font-medium leading-snug">{title}</CardTitle>
         <div className="-mr-2 -mt-1 flex shrink-0">
