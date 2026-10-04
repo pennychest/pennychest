@@ -1,0 +1,17 @@
+name: Docs
+
+# The docs are built and published by pennychest/pennychest.github.io; ask it to rebuild
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, mkdocs.yml]
+
+permissions: {}
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api repos/pennychest/pennychest.github.io/dispatches -f event_type=docs
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_TOKEN }}

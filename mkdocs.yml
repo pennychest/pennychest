@@ -1,5 +1,6 @@
 site_name: PennyChest
 site_description: Self-hosted personal finance with real double-entry accounting
+site_url: https://pennychest.github.io/
 repo_url: https://github.com/pennychest/pennychest
 repo_name: pennychest/pennychest
 

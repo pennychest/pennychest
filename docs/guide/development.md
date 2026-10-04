@@ -33,3 +33,5 @@ mkdocs serve
 ```
 
 The site is served at **http://localhost:8000** by default; pass `-a localhost:8001` if the app is already using that port.
+
+The published site, [pennychest.github.io](https://pennychest.github.io), is built by the [pennychest.github.io repository](https://github.com/pennychest/pennychest.github.io) from these docs and the plugin READMEs in pennychest-plugins. Pushing changes under `docs/` or to `mkdocs.yml` on `main` rebuilds it.
