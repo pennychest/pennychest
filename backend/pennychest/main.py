@@ -19,6 +19,7 @@ from pennychest.core.database import SessionLocal, get_db
 from pennychest.dashboard.routes import router as dashboard_router
 from pennychest.core.seed import seed_lookup_tables
 from pennychest.core.seed_accounts import has_accounts, has_rules, load_seed_accounts, load_seed_rules
+from pennychest.export.routes import router as export_router
 from pennychest.imports.routes import router as imports_router
 from pennychest.mcp.oauth import router as oauth_router
 from pennychest.mcp.server import router as mcp_router
@@ -93,6 +94,7 @@ app.include_router(dashboard_router)
 app.include_router(actions_router)
 app.include_router(chat_router)
 app.include_router(changes_router)
+app.include_router(export_router)
 app.include_router(mcp_tokens_router)
 # Outside /api: agents sign in with an access token rather than a session.
 app.include_router(mcp_router)
