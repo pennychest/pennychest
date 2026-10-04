@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# Stage 1: build the React frontend
-FROM node:20-slim AS frontend-build
+# Stage 1: build the React frontend. Its output is static files, so build it natively
+# rather than under emulation when building for another platform.
+FROM --platform=$BUILDPLATFORM node:20-slim AS frontend-build
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install --legacy-peer-deps
