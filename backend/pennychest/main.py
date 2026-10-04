@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -63,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PennyChest",
     description="Self-hosted personal finance with real double-entry accounting",
-    version="0.2.0",
+    version=version("pennychest"),
     lifespan=lifespan,
     # Every /api route needs a signed-in session unless auth.routes lists it as public.
     dependencies=[Depends(require_session)],

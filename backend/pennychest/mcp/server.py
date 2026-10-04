@@ -6,6 +6,7 @@ only run the actions their token's scopes allow.
 """
 
 import json
+from importlib.metadata import version
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -20,7 +21,7 @@ from pennychest.mcp.oauth import resource_metadata_url
 from pennychest.mcp.tokens import find_token
 
 SUPPORTED_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
-SERVER_INFO = {"name": "PennyChest", "version": "0.2.0"}
+SERVER_INFO = {"name": "PennyChest", "version": version("pennychest")}
 DESTRUCTIVE = {"delete_transactions", "delete_budget"}
 
 router = APIRouter(tags=["mcp"])
