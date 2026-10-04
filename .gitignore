@@ -38,3 +38,6 @@ backend/static/
 # Local envs and build output
 .venv/
 frontend/dev-dist/
+
+# MkDocs build output
+site/

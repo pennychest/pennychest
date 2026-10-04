@@ -1,0 +1,49 @@
+site_name: PennyChest
+site_description: Self-hosted personal finance with real double-entry accounting
+repo_url: https://github.com/pennychest/pennychest
+repo_name: pennychest/pennychest
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Installation: guide/installation.md
+      - Plugins: guide/plugins.md
+      - Signing in: guide/signing-in.md
+      - AI integration: guide/ai-integration.md
+  - Development:
+      - Local setup: guide/development.md
+      - CI and deployment: guide/deployment.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - attr_list
+  - toc:
+      permalink: true
