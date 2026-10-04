@@ -264,7 +264,7 @@ def test_categorise_with_jev_uses_choices_and_confidence(client, api, db_session
             f"t{tesco}": {"type": "choice", "choice": "Expenses:Groceries",
                           "probabilities": {"Expenses:Groceries": 0.93}, "confidence": 0.9},
             f"t{mystery}": {"type": "choice", "choice": "Expenses:Transport",
-                            "probabilities": {"Expenses:Transport": 0.4}, "confidence": 0.3},
+                            "probabilities": {"Expenses:Transport": 0.86}, "confidence": 0.85},
         },
         "usage": {"input_tokens": 500, "output_tokens": 40},
     }))

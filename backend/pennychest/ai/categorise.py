@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from pennychest.ai.providers import Provider, ProviderError, TypeSafeProvider
 
 # Jev reports calibrated confidence; below this, leave the transaction uncategorised
-# rather than guess.
-JEV_MIN_CONFIDENCE = 0.5
+# rather than guess. Behind the learned model, 0.9 got 98.8% of a test set right while still
+# categorising 83% of it automatically, against 95.0% right on 90% at 0.5.
+JEV_MIN_CONFIDENCE = 0.9
 JEV_BATCH_SIZE = 40
 JEV_MAX_OPTIONS = 255
 
