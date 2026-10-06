@@ -25,12 +25,12 @@ Anything else, such as 👷, ✅ or 🎨, merges without a release.
 
 ### The release app
 
-`main` only accepts changes through pull requests, so the Release workflow pushes the bump commit and tag as a GitHub App that the `main` ruleset lets through. `GITHUB_TOKEN` can't be given that bypass. The app needs:
+`main` only accepts changes through pull requests, so the Release workflow pushes the bump commit and tag as a GitHub App that the `main` ruleset lets through. `GITHUB_TOKEN` can't be given that bypass. The Docs workflow uses the same app to ask pennychest.github.io to rebuild. The app needs:
 
 - **Repository permissions:** Contents read and write. Metadata read-only is added automatically.
-- **Installed on:** this repository only.
-- **In the repository's Actions settings:** the app's client ID as the `RELEASE_APP_CLIENT_ID` variable, and a private key generated for it as the `RELEASE_APP_PRIVATE_KEY` secret.
-- **In the `main` ruleset:** the app added to the bypass list, set to Always.
+- **Installed on:** pennychest, pennychest-plugins and pennychest.github.io.
+- **In the organisation's Actions settings:** the app's client ID as the `RELEASE_APP_CLIENT_ID` variable, and a private key generated for it as the `RELEASE_APP_PRIVATE_KEY` secret, both available to pennychest and pennychest-plugins.
+- **In the `main` ruleset** of pennychest and pennychest-plugins: the app added to the bypass list, set to Always.
 
 ## Deploying
 
