@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
-  # Dispatchable against a tag, to rebuild a release's image. A tag pushed by a
-  # workflow using GITHUB_TOKEN does not raise a push event — GitHub suppresses
-  # those to prevent recursion — so the release workflow builds its own image.
+  # A release's tag is pushed by the Release workflow as its GitHub App, which
+  # starts this workflow. (A tag pushed with GITHUB_TOKEN would not: GitHub
+  # suppresses those push events to prevent recursion.) Dispatchable against a
+  # tag, to rebuild a release's image.
   workflow_dispatch:
 
 concurrency:
