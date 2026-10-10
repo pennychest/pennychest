@@ -1,8 +1,10 @@
-"""AI providers the app can use, what each one needs to connect, and which tasks it can do.
+"""AI providers the app can use, what each one needs to connect, and what kind of model each
+offers.
 
-LLM providers implement `complete_json`, which returns JSON matching a schema. TypeSafe's
-Jev is a decision model rather than an LLM: it answers typed Choice questions via `choose`,
-so it can do every task except writing rules and chat.
+Language model (LLM) providers implement `complete_json`, which returns JSON matching a schema.
+Decision model providers, TypeSafe's Jev and OpenAI's Decisions API, implement `choose`, which
+answers typed questions with a confidence. They can do every task except writing rules and
+chat; config.TASK_KINDS says which kinds each task can use.
 """
 
 import json
@@ -14,7 +16,17 @@ import anthropic
 import httpx
 from sqlalchemy.orm import Session
 
-from pennychest.ai.config import TASKS, get_provider_problem, get_task, provider_value
+from pennychest.ai.config import (
+    DECISION,
+    KIND_LABELS,
+    LLM,
+    TASKS,
+    get_model,
+    get_provider_problem,
+    provider_value,
+    task_enabled,
+    task_kind,
+)
 
 
 class ProviderError(ValueError):
@@ -172,7 +184,7 @@ class Provider:
     id: str
     label: str
     fields: tuple[Field, ...]
-    tasks: frozenset[str]
+    kind: str = LLM
 
     def list_models(self, cfg: dict) -> list[dict]:
         raise NotImplementedError
@@ -216,7 +228,6 @@ class AnthropicProvider(Provider):
     id = "anthropic"
     label = "Anthropic (Claude)"
     fields = (Field("api_key", "API key", secret=True, placeholder="sk-ant-..."),)
-    tasks = frozenset(TASKS)
 
     @staticmethod
     def _error(e: anthropic.APIError) -> ProviderError:
@@ -373,7 +384,6 @@ def _is_gemini_text_model(model_id: str) -> bool:
 class OpenAICompatibleProvider(Provider):
     """OpenAI's chat completions API, which Google also serves for Gemini."""
 
-    tasks = frozenset(TASKS)
 
     def __init__(self, id, label, base_url, model_filter, custom_base_url=False, key_hint=""):
         self.id = id
@@ -547,7 +557,6 @@ class OllamaProvider(Provider):
     id = "ollama"
     label = "Ollama (self-hosted)"
     fields = (Field("url", "Server URL", placeholder="http://ollama:11434"),)
-    tasks = frozenset(TASKS)
 
     def _url(self, cfg: dict) -> str:
         return cfg["url"].rstrip("/")
@@ -648,11 +657,30 @@ class OllamaProvider(Provider):
         )
 
 
-class TypeSafeProvider(Provider):
+class DecisionProvider(Provider):
+    """A decision model. Tasks ask it questions in Jev's form, which other decision providers
+    translate:
+
+        state: {key: anything}, which the questions refer to as `key`
+        questions: {name: {"type": "choice", "instructions": str, "criteria": {value: str | None}}
+                          | {"type": "noul", "instructions": str, "criteria"?: {"true": str,
+                             "false": str}}
+                          | {"type": "score", "instructions": str, "criteria": [str, ...]}}
+
+    and get answers keyed by question name: {"choice", "confidence"}, {"noul": probability}
+    or {"score": level, "confidence"}, where level counts from 0. A question the model won't
+    answer is missing or empty."""
+
+    kind = DECISION
+
+    def choose(self, cfg: dict, model: str, state: dict, questions: dict) -> Call:
+        raise NotImplementedError
+
+
+class TypeSafeProvider(DecisionProvider):
     id = "typesafe"
     label = "TypeSafe AI (Jev)"
     fields = (Field("api_key", "API key", secret=True),)
-    tasks = frozenset(TASKS) - {"rules", "chat"}
     base_url = "https://api.typesafe.ai/v1"
 
     def _headers(self, cfg: dict) -> dict:
@@ -679,6 +707,83 @@ class TypeSafeProvider(Provider):
         return Call(answers, request, body)
 
 
+class OpenAIDecisionsProvider(DecisionProvider):
+    """OpenAI's Decisions API, which answers the same kinds of question as Jev under other
+    names: a noul is a predicate, and a score's criteria are levels."""
+
+    id = "openai_decisions"
+    label = "OpenAI Decisions"
+    fields = (Field("api_key", "API key", secret=True, placeholder="sk-..."),)
+    base_url = "https://api.openai.com/v1"
+    # OpenAI's model list doesn't say which models take decisions; in the beta there's one.
+    MODELS = (("gpt-6-luna", "GPT-6 Luna"),)
+
+    def _headers(self, cfg: dict) -> dict:
+        return {"Authorization": f"Bearer {cfg['api_key']}"}
+
+    def list_models(self, cfg: dict) -> list[dict]:
+        # Listing OpenAI's models checks the key works
+        _send(self.label, "GET", f"{self.base_url}/models", headers=self._headers(cfg))
+        return [{"id": id, "label": label} for id, label in self.MODELS]
+
+    @staticmethod
+    def _question(name: str, question: dict) -> dict:
+        instructions = question["instructions"]
+        criteria = question.get("criteria")
+        if question["type"] == "choice":
+            return {
+                "type": "choice",
+                "name": name,
+                "instructions": instructions,
+                "choices": [
+                    {"value": value, "description": description or value}
+                    for value, description in criteria.items()
+                ],
+            }
+        if question["type"] == "noul":
+            if criteria:
+                instructions += f"\nTrue: {criteria['true']}\nFalse: {criteria['false']}"
+            return {"type": "predicate", "name": name, "instructions": instructions}
+        if question["type"] == "score":
+            return {
+                "type": "score",
+                "name": name,
+                "instructions": instructions,
+                "levels": [
+                    {"label": str(level), "description": description}
+                    for level, description in enumerate(criteria)
+                ],
+            }
+        raise ValueError(f"Unknown question type {question['type']!r}")
+
+    @staticmethod
+    def _answer(answer: dict) -> dict:
+        kind = answer.get("type")
+        if kind == "choice":
+            return {"choice": answer.get("choice"), "confidence": answer.get("confidence")}
+        if kind == "predicate":
+            return {"noul": answer.get("probability")}
+        if kind == "score":
+            return {"score": answer.get("score"), "confidence": answer.get("confidence")}
+        return {}  # a refusal
+
+    def choose(self, cfg: dict, model: str, state: dict, questions: dict) -> Call:
+        request = {
+            "model": model,
+            "input": json.dumps(state, ensure_ascii=False, default=str),
+            "questions": [self._question(name, q) for name, q in questions.items()],
+        }
+        body = _send(
+            self.label, "POST", f"{self.base_url}/decisions",
+            headers=self._headers(cfg), body=request,
+        )
+        answers = body.get("answers")
+        if not isinstance(answers, list):
+            raise ProviderError(f"{self.label} returned an unexpected response.")
+        data = {a.get("name"): self._answer(a) for a in answers if isinstance(a, dict)}
+        return Call(data, request, body)
+
+
 class VertexProvider(Provider):
     """Gemini on Google Cloud Vertex AI, with an express mode API key. Express mode keys only
     work against Vertex's global endpoint, in Google's own request format (not the
@@ -687,7 +792,6 @@ class VertexProvider(Provider):
     id = "vertex"
     label = "Google Vertex AI"
     fields = (Field("api_key", "Express mode API key", secret=True, placeholder="AQ...."),)
-    tasks = frozenset(TASKS)
     base_url = "https://aiplatform.googleapis.com/v1/publishers/google/models"
     # Express mode has no model listing; these are Google's current Gemini models.
     MODELS = (
@@ -865,6 +969,7 @@ PROVIDERS: dict[str, Provider] = {
         ),
         VertexProvider(),
         TypeSafeProvider(),
+        OpenAIDecisionsProvider(),
         OllamaProvider(),
     )
 }
@@ -882,15 +987,18 @@ def missing_fields(provider: Provider, cfg: dict) -> list[str]:
 
 
 def resolve_task(db: Session, task: str) -> tuple[Provider, dict, str]:
-    """The provider, its settings and the model chosen for `task`, or a ProviderError
-    telling the user what to set up."""
-    provider_id, model = get_task(db, task)
+    """The provider, its settings and the model `task` uses, or a ProviderError telling the
+    user what to set up."""
     task_label = TASKS[task].lower()
+    if not task_enabled(db, task):
+        raise ProviderError(f"{TASKS[task]} is turned off in Settings > AI.")
+    kind = task_kind(db, task)
+    provider_id, model = get_model(db, kind)
     provider = PROVIDERS.get(provider_id or "")
     if not provider or not model:
-        raise ProviderError(f"Choose an AI provider and model for {task_label} in Settings > AI.")
-    if task not in provider.tasks:
-        raise ProviderError(f"{provider.label} can't be used for {task_label}.")
+        raise ProviderError(f"Choose a {KIND_LABELS[kind]} for {task_label} in Settings > AI.")
+    if provider.kind != kind:
+        raise ProviderError(f"{provider.label} isn't a {KIND_LABELS[kind]}.")
     cfg = provider_config(db, provider)
     problem = get_provider_problem(db, provider.id)
     if problem:

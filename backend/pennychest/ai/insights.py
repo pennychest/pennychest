@@ -1,10 +1,11 @@
 """Labelling recurring merchants (subscription, bill or other) and scoring how unusual each new
-charge is, with the model chosen for the "insights" task. Runs after each import; the results
-are read by the recurring_payments and unusual_charges actions.
+charge is, with the model the "insights" task uses. Runs after each import, or when asked from
+the import's review page; the results are read by the recurring_payments and unusual_charges
+actions.
 
-Jev answers a Choice question per merchant and a Score question per charge; LLMs return the
-same answers as JSON. A failing model never breaks an import: the error is in the AI request
-logs and the work is retried on the next import."""
+A decision model answers a choice question per merchant and a score question per charge; LLMs
+return the same answers as JSON. A failing model never breaks an import: the error is in the AI
+request logs and the work is retried on the next import."""
 
 import json
 import time
@@ -16,9 +17,9 @@ from sqlalchemy.orm import Session
 
 from pennychest.actions.common import money
 from pennychest.actions.insights import find_recurring, merchant_key, spending_charges
-from pennychest.ai.config import get_task
+from pennychest.ai.config import task_available
 from pennychest.ai.models import AIRequestLog, MerchantLabel
-from pennychest.ai.providers import Provider, ProviderError, TypeSafeProvider, resolve_task
+from pennychest.ai.providers import DecisionProvider, Provider, ProviderError, resolve_task
 from pennychest.core.database import SessionLocal
 from pennychest.transactions.models import Transaction
 
@@ -49,11 +50,6 @@ UNUSUAL_LEVELS = [
 _SYSTEM = "You review a person's bank transactions in a personal finance app."
 
 
-def insights_enabled(db: Session) -> bool:
-    provider_id, model = get_task(db, "insights")
-    return bool(provider_id and model)
-
-
 def _log(db, provider, model, operation, started, request, response, error) -> None:
     db.add(
         AIRequestLog(
@@ -68,14 +64,14 @@ def _log(db, provider, model, operation, started, request, response, error) -> N
     db.flush()
 
 
-def _call(db: Session, operation: str, jev, llm):
-    """Run `jev(provider, cfg, model)` or `llm(...)`, whichever suits the chosen provider,
+def _call(db: Session, operation: str, decision, llm):
+    """Run `decision(provider, cfg, model)` or `llm(...)`, whichever suits the chosen provider,
     logging the call. Each returns (result, request, response)."""
     provider, cfg, model = resolve_task(db, "insights")
     started = time.monotonic()
     request = response = error = None
     try:
-        ask = jev if isinstance(provider, TypeSafeProvider) else llm
+        ask = decision if isinstance(provider, DecisionProvider) else llm
         result, request, response = ask(provider, cfg, model)
     except ProviderError as e:
         error = str(e)
@@ -88,8 +84,8 @@ def _call(db: Session, operation: str, jev, llm):
 # Merchants
 
 
-def _kinds_with_jev(merchants: list[dict]):
-    def ask(provider: TypeSafeProvider, cfg, model):
+def _kinds_with_decision_model(merchants: list[dict]):
+    def ask(provider: DecisionProvider, cfg, model):
         found, requests, responses = {}, [], []
         for start in range(0, len(merchants), BATCH_SIZE):
             batch = merchants[start:start + BATCH_SIZE]
@@ -171,7 +167,9 @@ def label_merchants(db: Session, today: date) -> int:
         }
         for r in unlabelled
     ]
-    found = _call(db, "label_merchants", _kinds_with_jev(merchants), _kinds_with_llm(merchants))
+    found = _call(
+        db, "label_merchants", _kinds_with_decision_model(merchants), _kinds_with_llm(merchants)
+    )
     for r in unlabelled:
         if r["merchant"] in found:
             kind, confidence = found[r["merchant"]]
@@ -212,8 +210,8 @@ def _context(charge: dict, history: list[dict]) -> dict:
     return context
 
 
-def _scores_with_jev(contexts: dict[int, dict]):
-    def ask(provider: TypeSafeProvider, cfg, model):
+def _scores_with_decision_model(contexts: dict[int, dict]):
+    def ask(provider: DecisionProvider, cfg, model):
         ids = list(contexts)
         found, requests, responses = {}, [], []
         for start in range(0, len(ids), BATCH_SIZE):
@@ -307,7 +305,9 @@ def score_charges(db: Session, transaction_ids: list[int]) -> int:
     }
     if not contexts:
         return 0
-    scores = _call(db, "score_charges", _scores_with_jev(contexts), _scores_with_llm(contexts))
+    scores = _call(
+        db, "score_charges", _scores_with_decision_model(contexts), _scores_with_llm(contexts)
+    )
     top = len(UNUSUAL_LEVELS) - 1
     for txn_id, score in scores.items():
         db.get(Transaction, txn_id).unusual_score = round(min(max(score / top, 0.0), 1.0), 3)
@@ -317,8 +317,8 @@ def score_charges(db: Session, transaction_ids: list[int]) -> int:
 
 def run_after_import(db: Session, batch_id: int) -> str | None:
     """Score the import's charges and label recurring merchants that are new as of its latest
-    charge, if a model is chosen for insights. Returns the model's error, if it failed."""
-    if not insights_enabled(db):
+    charge, if insights are on and have a model. Returns the model's error, if it failed."""
+    if not task_available(db, "insights"):
         return None
     rows = db.execute(
         select(Transaction.id, Transaction.date).where(Transaction.import_batch_id == batch_id)

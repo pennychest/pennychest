@@ -2,7 +2,8 @@ import httpx
 import pytest
 
 from pennychest.ai import learned, providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
+from tests.conftest import use_model
 from tests.test_ai import _expense_account, _source_id
 from tests.test_auto_categorise import _import, uploads  # noqa: F401
 from tests.test_tap_ai import FakeJev, same_session  # noqa: F401
@@ -140,7 +141,7 @@ def test_only_what_history_cant_answer_goes_to_the_ai(client, db_session, monkey
     fake.answer("Expenses:Groceries", 0.9)
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "categorise", "typesafe", "jev-latest")
+    use_model(db_session, "categorise", "typesafe", "jev-latest")
 
     result = _import(client, history["Liabilities:Card"], STATEMENT, name="july.csv")
     assert result["learned_count"] == 2 and result["ai_categorised_count"] == 3
@@ -152,7 +153,7 @@ def test_taps_use_history_before_the_ai(client, db_session, monkeypatch, history
     fake = FakeJev()
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "taps", "typesafe", "jev-latest")
+    use_model(db_session, "taps", "typesafe", "jev-latest")
 
     tap = _tap(client, merchant="TESCO STORES 3301 ST HELIER").json()
     assert tap["suggestion_source"] == "learned"

@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
-import { aiApi, type AiConfig, type AiProvider, type AiTask, type ChatScope } from "../api/client";
+import {
+  aiApi,
+  type AiConfig,
+  type AiKind,
+  type AiMode,
+  type AiProvider,
+  type AiTask,
+  type ChatScope,
+} from "../api/client";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -11,31 +19,51 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 const CONFIG_KEY = ["ai-config"];
 
-const AUTOMATIC_TASKS: AiTask[] = ["taps", "categorise", "check_actions", "matching", "insights"];
-const ON_DEMAND_TASKS: AiTask[] = ["rules", "chat"];
+const TASK_ORDER: AiTask[] = ["categorise", "taps", "matching", "insights", "rules", "chat", "check_actions"];
 
-const USED_FOR: Record<AiTask, string> = {
-  taps: "card taps",
-  categorise: "categorising",
-  rules: "rule suggestions",
-  chat: "chat",
-  check_actions: "checking chat actions",
-  matching: "matching",
-  insights: "subscriptions and unusual charges",
-};
+const KINDS: { kind: AiKind; title: string; label: string; help: string }[] = [
+  {
+    kind: "decision",
+    title: "Decision model",
+    label: "Decision model",
+    help:
+      "Picks from fixed answers and says how sure it is. Fast and cheap, so it suits jobs that run on every import and card tap. It can't chat or write rules.",
+  },
+  {
+    kind: "llm",
+    title: "Language model",
+    label: "Language model",
+    help: "Writes text, so it can do everything, including chat and suggesting rules. Slower, and costs more per request.",
+  },
+];
+
+const KIND_LABEL: Record<AiKind, string> = { decision: "Decision model", llm: "Language model" };
 
 const TASK_HELP: Record<AiTask, string> = {
-  taps: "Suggests a category for each card tap as it arrives. Your rules still come first.",
-  categorise:
-    "Picks a category for imported transactions that no rule or card tap covered. You can also run it from an import's review page.",
-  rules: "Proposes categorisation rules from your transactions. Needs a general-purpose model.",
+  taps: "Suggests a category for each card tap. Your rules still come first.",
+  categorise: "Picks a category for imported transactions that no rule or card tap covered.",
+  rules: "Proposes categorisation rules from your transactions.",
   chat: "Answers questions about your finances and, if you allow it below, makes changes for you.",
   check_actions:
     "Before chat makes a change, checks that it's what you asked for. If it isn't, the change is held back and chat asks you first.",
   matching:
-    "When a card tap could be one of several statement lines, picks the right one. On import, links transfers between your accounts and flags transactions you already have.",
-  insights:
-    "After each import, marks which regular payments are subscriptions or bills, and flags charges that are unusual for the merchant or category. Chat uses both.",
+    "Links card taps and transfers between your accounts to the right statement lines, and flags transactions you already have.",
+  insights: "Marks which regular payments are subscriptions or bills, and flags unusual charges. Chat uses both.",
+};
+
+// Where to run each task when it's on demand
+const ON_DEMAND_HELP: Partial<Record<AiTask, string>> = {
+  taps: "Ask for a category on each tap on the Card taps page.",
+  categorise: "Run it from an import's review page.",
+  matching: "Run it from an import's review page, or with Reconcile on the Card taps page.",
+  insights: "Run it from an import's review page.",
+};
+
+const AUTOMATIC_HELP: Partial<Record<AiTask, string>> = {
+  taps: "Runs on every card tap as it arrives.",
+  categorise: "Runs straight after each import. Each run can be undone from Settings → Changes made by AI.",
+  matching: "Runs on every import and card tap, and only acts when it's confident.",
+  insights: "Runs after each import.",
 };
 
 export function AiSettingsSection() {
@@ -48,39 +76,31 @@ export function AiSettingsSection() {
 
   return (
     <div className="space-y-6">
+      {KINDS.map(({ kind, title, help }) => (
+        <section key={kind} className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">{title}</h2>
+            <p className="text-sm text-muted-foreground">{help}</p>
+          </div>
+          <ModelCard kind={kind} config={config} />
+          {config.providers
+            .filter((p) => p.kind === kind)
+            .map((provider) => (
+              <ProviderCard key={provider.id} provider={provider} />
+            ))}
+        </section>
+      ))}
+
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold">Automatic</h2>
+          <h2 className="text-lg font-semibold">Tasks</h2>
           <p className="text-sm text-muted-foreground">
-            Runs by itself whenever new data arrives. Choose a provider to turn it on.
+            Turn each one on or off, choose which model it uses, and whether it runs by itself or when you ask.
           </p>
         </div>
         <LearnedCard />
-        {AUTOMATIC_TASKS.map((task) => (
+        {TASK_ORDER.map((task) => (
           <TaskCard key={task} task={task} config={config} />
-        ))}
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold">On demand</h2>
-          <p className="text-sm text-muted-foreground">Runs when you press a button or ask.</p>
-        </div>
-        {ON_DEMAND_TASKS.map((task) => (
-          <TaskCard key={task} task={task} config={config} />
-        ))}
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold">Providers</h2>
-          <p className="text-sm text-muted-foreground">
-            Connect the providers you want to use. Keys are stored in your PennyChest database and
-            are never shown again after saving.
-          </p>
-        </div>
-        {config.providers.map((provider) => (
-          <ProviderCard key={provider.id} provider={provider} />
         ))}
       </section>
     </div>
@@ -96,10 +116,11 @@ function useRefreshModels(providerId: string | null) {
   });
 }
 
-function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
+// The one model of a kind that every task using that kind shares
+function ModelCard({ kind, config }: { kind: AiKind; config: AiConfig }) {
   const queryClient = useQueryClient();
-  const current = config.tasks[task];
-  const eligible = config.providers.filter((p) => p.tasks.includes(task));
+  const current = config.models[kind];
+  const eligible = config.providers.filter((p) => p.kind === kind);
   const [draftProviderId, setDraftProviderId] = useState<string | null>(current.provider);
   const providerId = draftProviderId ?? current.provider;
   const provider = eligible.find((p) => p.id === providerId) ?? null;
@@ -107,7 +128,7 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
 
   const choose = useMutation({
     mutationFn: ({ providerId, model }: { providerId: string | null; model: string | null }) =>
-      aiApi.chooseModel(task, providerId, model),
+      aiApi.chooseModel(kind, providerId, model),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: CONFIG_KEY }),
   });
 
@@ -117,41 +138,15 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
       !models.some((m) => m.id === current.model)) {
     models.unshift({ id: current.model, label: current.model });
   }
-  // Only providers that are set up, plus whichever this task already uses
+  // Only providers that are set up, plus whichever is already chosen
   const choices = eligible.filter((p) => p.configured || p.id === provider?.id);
   const selectedModel = provider?.id === current.provider ? current.model ?? undefined : undefined;
   const error = choose.error?.message ?? refresh.error?.message;
+  const label = KIND_LABEL[kind];
 
   return (
     <Card>
       <CardContent className="pt-4 space-y-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">{current.label}</p>
-          </div>
-          <p className="text-xs text-muted-foreground">{TASK_HELP[task]}</p>
-          {task === "taps" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Runs on every tap, so a fast, cheap model such as Jev works best.
-            </p>
-          )}
-          {task === "insights" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Runs on every imported charge, so a fast, cheap model such as Jev works best.
-            </p>
-          )}
-          {task === "matching" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Only acts when it's confident. A fast, cheap model such as Jev works best.
-            </p>
-          )}
-          {task === "check_actions" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Runs before every change, so a fast, cheap model such as Jev works best.
-            </p>
-          )}
-        </div>
-
         <div className="grid gap-2 sm:grid-cols-2">
           <Select
             value={provider?.id ?? ""}
@@ -161,7 +156,7 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
             }}
             disabled={choices.length === 0}
           >
-            <SelectTrigger aria-label={`${current.label} provider`}>
+            <SelectTrigger aria-label={`${label} provider`}>
               <SelectValue
                 placeholder={choices.length === 0 ? "Set up a provider below first" : "Choose a provider"}
               />
@@ -182,7 +177,7 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
               onValueChange={(model) => choose.mutate({ providerId: provider!.id, model })}
               disabled={!provider || models.length === 0 || choose.isPending}
             >
-              <SelectTrigger aria-label={`${current.label} model`}>
+              <SelectTrigger aria-label={`${label} model`}>
                 <SelectValue placeholder={provider && models.length === 0 ? "No models loaded" : "Choose a model"} />
               </SelectTrigger>
               <SelectContent>
@@ -208,15 +203,12 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
         </div>
 
         {provider && !provider.configured && (
-          <p className="text-xs text-muted-foreground">Set up {provider.label} under Providers below first.</p>
+          <p className="text-xs text-muted-foreground">Set up {provider.label} below first.</p>
         )}
         {provider?.configured && models.length === 0 && !refresh.isPending && (
           <p className="text-xs text-muted-foreground">Refresh to load {provider.label}'s models.</p>
         )}
         {error && <p className="text-xs text-destructive">{error}</p>}
-
-        {task === "chat" && <ChatPermissions scopes={current.scopes ?? []} />}
-        {task === "categorise" && <AutoCategoriseSwitch enabled={current.auto ?? true} />}
 
         <div className="flex items-center justify-between gap-2">
           {current.ready ? (
@@ -230,7 +222,7 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
               {current.problem}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">Not set up.</p>
+            <p className="text-xs text-muted-foreground">No {label.toLowerCase()} chosen.</p>
           )}
           {current.provider && (
             <Button
@@ -242,10 +234,143 @@ function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
               }}
               disabled={choose.isPending}
             >
-              Turn off
+              Clear
             </Button>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs text-muted-foreground w-12">{label}</span>
+      <div role="radiogroup" aria-label={label} className="inline-flex rounded-md border p-0.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            disabled={disabled}
+            onClick={() => value !== option.value && onChange(option.value)}
+            className={cn(
+              "rounded px-3 py-1 text-xs font-medium transition-colors",
+              value === option.value ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({ task, config }: { task: AiTask; config: AiConfig }) {
+  const queryClient = useQueryClient();
+  const current = config.tasks[task];
+  const update = useMutation({
+    mutationFn: (settings: { enabled?: boolean; kind?: AiKind; mode?: AiMode }) =>
+      aiApi.updateTask(task, settings),
+    // Show the change straight away; roll back if saving fails.
+    onMutate: async (settings) => {
+      await queryClient.cancelQueries({ queryKey: CONFIG_KEY });
+      const previous = queryClient.getQueryData<AiConfig>(CONFIG_KEY);
+      if (previous) {
+        queryClient.setQueryData<AiConfig>(CONFIG_KEY, {
+          ...previous,
+          tasks: { ...previous.tasks, [task]: { ...previous.tasks[task], ...settings } },
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _settings, context) => {
+      if (context?.previous) queryClient.setQueryData(CONFIG_KEY, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: CONFIG_KEY }),
+  });
+
+  const providerLabel = config.providers.find((p) => p.id === current.provider)?.label;
+  const modeHelp =
+    current.mode === "automatic" ? AUTOMATIC_HELP[task] : current.mode === "on_demand" ? ON_DEMAND_HELP[task] : null;
+
+  return (
+    <Card>
+      <CardContent className="pt-4 space-y-3">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-primary"
+            checked={current.enabled}
+            onChange={(e) => update.mutate({ enabled: e.target.checked })}
+            aria-label={`Use AI for ${current.label.toLowerCase()}`}
+          />
+          <span>
+            <span className="block text-sm font-medium">{current.label}</span>
+            <span className="block text-xs text-muted-foreground">{TASK_HELP[task]}</span>
+          </span>
+        </label>
+
+        {current.enabled && (
+          <div className="space-y-2 pl-7">
+            {current.kinds.length > 1 && (
+              <Segmented
+                label="Uses"
+                value={current.kind}
+                options={current.kinds.map((kind) => ({ value: kind, label: KIND_LABEL[kind] }))}
+                onChange={(kind) => update.mutate({ kind })}
+              />
+            )}
+            {current.mode && (
+              <Segmented
+                label="Runs"
+                value={current.mode}
+                options={[
+                  { value: "automatic", label: "Automatically" },
+                  { value: "on_demand", label: "When I ask" },
+                ]}
+                onChange={(mode) => update.mutate({ mode })}
+              />
+            )}
+            {modeHelp && <p className="text-xs text-muted-foreground">{modeHelp}</p>}
+            {current.mode === "automatic" && current.kind === "llm" && (
+              <p className="text-xs text-muted-foreground">
+                A language model on every {task === "taps" ? "tap" : "import"} can add up; a decision model is faster and
+                cheaper.
+              </p>
+            )}
+
+            {task === "chat" && <ChatPermissions scopes={current.scopes ?? []} />}
+
+            {current.ready ? (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Check className="h-3 w-3" />
+                Using {providerLabel} · {current.model}
+              </p>
+            ) : (
+              <p className="text-xs text-warning flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                {current.problem}
+              </p>
+            )}
+          </div>
+        )}
+        {update.error && <p className="text-xs text-destructive">{update.error.message}</p>}
       </CardContent>
     </Card>
   );
@@ -307,46 +432,6 @@ function LearnedCard() {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function AutoCategoriseSwitch({ enabled }: { enabled: boolean }) {
-  const queryClient = useQueryClient();
-  const save = useMutation({
-    mutationFn: aiApi.setAutoCategorise,
-    onMutate: async (next: boolean) => {
-      await queryClient.cancelQueries({ queryKey: CONFIG_KEY });
-      const previous = queryClient.getQueryData<AiConfig>(CONFIG_KEY);
-      if (previous) {
-        queryClient.setQueryData<AiConfig>(CONFIG_KEY, {
-          ...previous,
-          tasks: { ...previous.tasks, categorise: { ...previous.tasks.categorise, auto: next } },
-        });
-      }
-      return { previous };
-    },
-    onError: (_error, _next, context) => {
-      if (context?.previous) queryClient.setQueryData(CONFIG_KEY, context.previous);
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: CONFIG_KEY }),
-  });
-
-  return (
-    <label className="flex items-start gap-2 text-sm cursor-pointer">
-      <input
-        type="checkbox"
-        className="mt-0.5 h-4 w-4 accent-primary"
-        checked={enabled}
-        disabled={save.isPending}
-        onChange={(e) => save.mutate(e.target.checked)}
-      />
-      <span>
-        Run straight after each import
-        <span className="block text-xs text-muted-foreground">
-          Each run can be undone from Settings → Changes made by AI.
-        </span>
-      </span>
-    </label>
   );
 }
 
@@ -440,10 +525,6 @@ function ProviderCard({ provider }: { provider: AiProvider }) {
       return field && value.trim() !== (field.secret ? "" : field.value ?? "");
     }),
   );
-  const usedFor = [...AUTOMATIC_TASKS, ...ON_DEMAND_TASKS]
-    .filter((t) => provider.tasks.includes(t))
-    .map((t) => USED_FOR[t])
-    .join(", ");
 
   return (
     <Card>
@@ -456,7 +537,6 @@ function ProviderCard({ provider }: { provider: AiProvider }) {
         >
           {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
           <span className="font-medium">{provider.label}</span>
-          <span className="hidden sm:inline text-xs text-muted-foreground">Used for {usedFor}</span>
           <Badge
             variant={provider.problem ? "destructive" : provider.configured ? "success" : "outline"}
             className="ml-auto"
@@ -473,7 +553,6 @@ function ProviderCard({ provider }: { provider: AiProvider }) {
               save.mutate(changed);
             }}
           >
-            <p className="sm:hidden text-xs text-muted-foreground">Used for {usedFor}</p>
             {provider.fields.map((field) => {
               const showSaved = field.secret && field.is_set && !replacing[field.key];
               return (

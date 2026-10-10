@@ -8,24 +8,33 @@ from sqlalchemy.orm import Session, joinedload
 
 from pennychest.accounts.models import Account
 from pennychest.actions.models import ActionChange
-from pennychest.ai import learned
+from pennychest.ai import insights, learned
 from pennychest.ai.categorise import Categorisation, TxnInput, categorise_transactions
 from pennychest.ai.config import (
-    AUTOMATIC_TASKS,
+    AUTOMATIC,
     CHAT_SCOPES,
+    KIND_LABELS,
+    MODE_TASKS,
+    ON_DEMAND,
+    TASK_KINDS,
     TASKS,
     cache_models,
     cached_models,
-    get_auto_categorise,
-    get_provider_problem,
     get_chat_scopes,
+    get_model,
+    get_provider_problem,
     get_task,
     provider_value,
-    set_auto_categorise,
     set_chat_scopes,
+    set_model,
     set_provider_problem,
     set_provider_values,
-    set_task,
+    set_task_enabled,
+    set_task_kind,
+    set_task_mode,
+    task_enabled,
+    task_kind,
+    task_mode,
 )
 from pennychest.ai.models import AIRequestLog
 from pennychest.ai.providers import (
@@ -291,6 +300,22 @@ def ai_categorise_batch(batch_id: int, db: Session = Depends(get_db)):
     return _categorise_response(categorise_uncategorised(db, batch=batch))
 
 
+@router.post("/insights/batch/{batch_id}")
+def ai_insights_batch(batch_id: int, db: Session = Depends(get_db)):
+    """Label the recurring payments and score the charges in an import, for when insights run
+    on demand rather than straight after each import."""
+    if not db.get(ImportBatch, batch_id):
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    try:
+        resolve_task(db, "insights")
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    error = insights.run_after_import(db, batch_id)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    return {"ok": True}
+
+
 @router.post("/categorise/all")
 def ai_categorise_all(db: Session = Depends(get_db)):
     """Categorise all uncategorised transactions across all batches."""
@@ -415,9 +440,16 @@ class ProviderValues(BaseModel):
     values: dict[str, str | None]
 
 
-class TaskChoice(BaseModel):
+class ModelChoice(BaseModel):
     provider: str | None
     model: str | None = None
+
+
+class TaskSettings(BaseModel):
+    # Omit any to leave it unchanged
+    enabled: bool | None = None
+    kind: str | None = None
+    mode: str | None = None
 
 
 def _provider_or_404(provider_id: str):
@@ -436,7 +468,7 @@ def get_ai_config(db: Session = Depends(get_db)):
         providers.append({
             "id": provider.id,
             "label": provider.label,
-            "tasks": sorted(provider.tasks),
+            "kind": provider.kind,
             "configured": not missing_fields(provider, cfg),
             # Set when the saved credentials were rejected the last time they were tried
             "problem": get_provider_problem(db, provider.id),
@@ -457,6 +489,23 @@ def get_ai_config(db: Session = Depends(get_db)):
             "models_updated_at": updated_at,
         })
 
+    models = {}
+    for kind in KIND_LABELS:
+        provider_id, model = get_model(db, kind)
+        provider = PROVIDERS.get(provider_id or "")
+        problem = None
+        if provider is not None:
+            missing = missing_fields(provider, provider_config(db, provider))
+            problem = get_provider_problem(db, provider.id) or (
+                f"Add {provider.label}'s {', '.join(missing)} below." if missing else None
+            )
+        models[kind] = {
+            "provider": provider_id,
+            "model": model,
+            "ready": bool(provider and model) and problem is None,
+            "problem": problem,
+        }
+
     tasks = {}
     for task, label in TASKS.items():
         provider_id, model = get_task(db, task)
@@ -467,15 +516,19 @@ def get_ai_config(db: Session = Depends(get_db)):
             problem = str(e)
         tasks[task] = {
             "label": label,
+            # The kinds of model it can use, and the one it does
+            "kinds": list(TASK_KINDS[task]),
+            "kind": task_kind(db, task),
+            "enabled": task_enabled(db, task),
+            # "automatic" or "on_demand", or None if it doesn't have the choice
+            "mode": task_mode(db, task),
             "provider": provider_id,
             "model": model,
             "ready": problem is None,
             "problem": problem,
-            "automatic": task in AUTOMATIC_TASKS,
         }
     tasks["chat"]["scopes"] = get_chat_scopes(db)
-    tasks["categorise"]["auto"] = get_auto_categorise(db)
-    return {"providers": providers, "tasks": tasks}
+    return {"providers": providers, "models": models, "tasks": tasks}
 
 
 @router.put("/providers/{provider_id}", status_code=204)
@@ -511,20 +564,42 @@ def refresh_models(provider_id: str, db: Session = Depends(get_db)):
     return {"models": models, "models_updated_at": updated_at}
 
 
-@router.put("/tasks/{task}", status_code=204)
-def choose_task_model(task: str, body: TaskChoice, db: Session = Depends(get_db)):
-    if task not in TASKS:
-        raise HTTPException(status_code=404, detail="Unknown AI task")
+@router.put("/models/{kind}", status_code=204)
+def choose_model(kind: str, body: ModelChoice, db: Session = Depends(get_db)):
+    """Choose the language model or decision model the tasks share, or clear it."""
+    if kind not in KIND_LABELS:
+        raise HTTPException(status_code=404, detail="Unknown kind of model")
     if body.provider is not None:
         provider = _provider_or_404(body.provider)
-        if task not in provider.tasks:
+        if provider.kind != kind:
             raise HTTPException(
-                status_code=400,
-                detail=f"{provider.label} can't be used for {TASKS[task].lower()}.",
+                status_code=400, detail=f"{provider.label} isn't a {KIND_LABELS[kind]}."
             )
         if not (body.model or "").strip():
             raise HTTPException(status_code=400, detail="Choose a model")
-    set_task(db, task, body.provider, (body.model or "").strip() or None)
+    set_model(db, kind, body.provider, (body.model or "").strip() or None)
+
+
+@router.put("/tasks/{task}", status_code=204)
+def update_task(task: str, body: TaskSettings, db: Session = Depends(get_db)):
+    """Turn a task on or off, choose which kind of model it uses, and whether it runs by
+    itself or only when asked."""
+    if task not in TASKS:
+        raise HTTPException(status_code=404, detail="Unknown AI task")
+    if body.kind is not None and body.kind not in TASK_KINDS[task]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{TASKS[task]} can't use a {KIND_LABELS.get(body.kind, body.kind)}.",
+        )
+    modes = (AUTOMATIC, ON_DEMAND)
+    if body.mode is not None and (task not in MODE_TASKS or body.mode not in modes):
+        raise HTTPException(status_code=400, detail=f"{TASKS[task]} can't run {body.mode}.")
+    if body.enabled is not None:
+        set_task_enabled(db, task, body.enabled)
+    if body.kind is not None:
+        set_task_kind(db, task, body.kind)
+    if body.mode is not None:
+        set_task_mode(db, task, body.mode)
 
 
 class ChatScopes(BaseModel):
@@ -539,16 +614,6 @@ def choose_chat_scopes(body: ChatScopes, db: Session = Depends(get_db)):
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown scopes: {', '.join(sorted(unknown))}")
     set_chat_scopes(db, body.scopes)
-
-
-class AutoCategoriseBody(BaseModel):
-    enabled: bool
-
-
-@router.put("/categorise/auto", status_code=204)
-def set_auto_categorise_route(body: AutoCategoriseBody, db: Session = Depends(get_db)):
-    """Turn categorising straight after each import on or off."""
-    set_auto_categorise(db, body.enabled)
 
 
 @router.get("/learned")

@@ -22,6 +22,8 @@ class ImportBatch(Base):
     period_end = Column(Date, nullable=True)
     opening_balance = Column(Numeric(19, 4), nullable=True)
     closing_balance = Column(Numeric(19, 4), nullable=True)
+    # When the matching model last looked for duplicates and transfers in this import
+    matched_at = Column(DateTime(timezone=True), nullable=True)
 
     source_type = relationship("ImportSourceType")
     account = relationship("Account")

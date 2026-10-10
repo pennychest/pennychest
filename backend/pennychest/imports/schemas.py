@@ -14,6 +14,8 @@ class ImportBatchResponse(BaseModel):
     imported_at: datetime
     transaction_count: int = 0
     categorised_count: int = 0
+    # When the matching model last looked for duplicates and transfers in it
+    matched_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

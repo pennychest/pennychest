@@ -4,9 +4,10 @@ import httpx
 import pytest
 
 from pennychest.ai import check_actions, providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
 from pennychest.ai.providers import Call
 from pennychest.chat import service
+from tests.conftest import use_model
 from tests.test_actions import ledger  # noqa: F401  (fixture)
 from tests.test_chat import ScriptedModel, parse_sse
 
@@ -32,7 +33,7 @@ def jev(db_session, monkeypatch):
     fake = FakeJev()
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "check_actions", "typesafe", "jev-latest")
+    use_model(db_session, "check_actions", "typesafe", "jev-latest")
     return fake
 
 

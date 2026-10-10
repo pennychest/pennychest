@@ -72,6 +72,16 @@ def db_session(engine):
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def ai_tasks_off(db_session):
+    """Every AI task starts off, so a test only runs the ones it sets up with use_model. (A new
+    install has them on, running once a model is chosen.)"""
+    from pennychest.ai.config import TASKS, set_task_enabled
+
+    for task in TASKS:
+        set_task_enabled(db_session, task, False)
+
+
 TEST_PASSWORD = "correct horse battery"
 
 
@@ -94,3 +104,26 @@ def client(anon_client):
     response = anon_client.post("/api/auth/setup", json={"password": TEST_PASSWORD})
     assert response.status_code == 204
     return anon_client
+
+
+def use_model(db, task, provider_id, model, mode="automatic"):
+    """Have `task` use this provider's model, running `mode` where it has the choice; with no
+    provider, turn the task off."""
+    from pennychest.ai.config import (
+        MODE_TASKS,
+        set_model,
+        set_task_enabled,
+        set_task_kind,
+        set_task_mode,
+    )
+    from pennychest.ai.providers import PROVIDERS
+
+    if provider_id is None:
+        set_task_enabled(db, task, False)
+        return
+    kind = PROVIDERS[provider_id].kind
+    set_model(db, kind, provider_id, model)
+    set_task_enabled(db, task, True)
+    set_task_kind(db, task, kind)
+    if task in MODE_TASKS:
+        set_task_mode(db, task, mode)

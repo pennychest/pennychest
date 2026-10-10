@@ -11,9 +11,9 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from pennychest.ai.config import get_task
+from pennychest.ai.config import task_available
 from pennychest.ai.models import AIRequestLog
-from pennychest.ai.providers import Provider, ProviderError, TypeSafeProvider, resolve_task
+from pennychest.ai.providers import DecisionProvider, Provider, ProviderError, resolve_task
 
 # Below this probability that the user asked for the action, it is held back.
 MIN_PROBABILITY = 0.5
@@ -47,8 +47,7 @@ class Verdict:
 
 
 def checking_enabled(db: Session) -> bool:
-    provider_id, model = get_task(db, "check_actions")
-    return bool(provider_id and model)
+    return task_available(db, "check_actions")
 
 
 def _state(conversation: list[dict], name: str, description: str, arguments: dict) -> dict:
@@ -62,7 +61,7 @@ def _state(conversation: list[dict], name: str, description: str, arguments: dic
     }
 
 
-def _with_jev(provider: TypeSafeProvider, cfg, model, state):
+def _with_decision_model(provider: DecisionProvider, cfg, model, state):
     questions = {"asked": {"type": "noul", "instructions": _QUESTION, "criteria": _CRITERIA}}
     call = provider.choose(cfg, model, state, questions)
     answer = call.data.get("asked") or {}
@@ -105,8 +104,8 @@ def check_action(
     started = time.monotonic()
     request = response = error = None
     try:
-        if isinstance(provider, TypeSafeProvider):
-            probability, request, response = _with_jev(provider, cfg, model, state)
+        if isinstance(provider, DecisionProvider):
+            probability, request, response = _with_decision_model(provider, cfg, model, state)
         else:
             probability, request, response = _with_llm(provider, cfg, model, state)
     except ProviderError as e:

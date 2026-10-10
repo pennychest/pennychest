@@ -1,6 +1,6 @@
 import hashlib
 import os
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -8,29 +8,29 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from pennychest.accounts.models import Account, AccountType
-from pennychest.ai.config import get_auto_categorise, get_task
+from pennychest.ai.config import runs_automatically
+from pennychest.ai.insights import run_in_background as insights_in_background
 from pennychest.ai.learned import learned_enabled
+from pennychest.ai.providers import ProviderError, resolve_task
 from pennychest.ai.routes import CategoriseOutcome, categorise_uncategorised
 from pennychest.core.config import settings
 from pennychest.core.database import get_db
 from pennychest.core.lookup_models import CategorisationSource, ImportSourceType
 from pennychest.imports.base import discover_importers, find_importer, get_importer
+from pennychest.imports.matching import NewRow, describe_source, flag_duplicates, link_transfers
 from pennychest.imports.models import ImportBatch, RawImportRow
 from pennychest.imports.schemas import (
     DetectResponse,
+    DuplicateOf,
     ImportBatchListResponse,
     ImportBatchResponse,
     ImporterInfo,
     ImportReviewResponse,
-    DuplicateOf,
     ImportTransactionResponse,
     MarkAsTransferRequest,
     StatementDetection,
     TransferSuggestion,
 )
-from pennychest.ai.insights import insights_enabled
-from pennychest.ai.insights import run_in_background as insights_in_background
-from pennychest.imports.matching import NewRow, describe_source, flag_duplicates, link_transfers
 from pennychest.rules.engine import (
     _get_match_type_map,
     find_matching_rule,
@@ -393,27 +393,32 @@ def upload_import(
 
     # Statement lines already in the ledger, and transfers whose sides are described
     # differently, need judging rather than exact matching.
-    flag_duplicates(db, batch.id, account_id, created)
-    if transfers_pending_account:
-        link_transfers(db, account_id, created, transfers_pending_account, uncategorised_account)
+    match_with_model = runs_automatically(db, "matching")
+    flag_duplicates(db, batch.id, account_id, created, use_model=match_with_model)
+    if match_with_model:
+        if transfers_pending_account:
+            link_transfers(
+                db, account_id, created, transfers_pending_account, uncategorised_account
+            )
+        batch.matched_at = datetime.now(UTC)
 
     # Link any card taps that this statement now covers
-    reconcile_taps(db)
+    reconcile_taps(db, use_model=match_with_model)
 
     db.commit()
     db.refresh(batch)
 
     # Then categorise whatever rules and card taps didn't: from the user's own history first,
-    # then with AI if that's set up. The import stands even if the AI fails; the error is
-    # reported alongside it and kept in the AI logs.
-    use_ai = get_auto_categorise(db) and bool(get_task(db, "categorise")[1])
+    # then with AI if it runs automatically. The import stands even if the AI fails; the error
+    # is reported alongside it and kept in the AI logs.
+    use_ai = runs_automatically(db, "categorise")
     outcome = CategoriseOutcome()
     if use_ai or learned_enabled(db):
         outcome = categorise_uncategorised(db, batch=batch, source="import", use_ai=use_ai)
 
     # Scoring charges and labelling subscriptions waits for categories, and the upload
     # shouldn't wait for it.
-    if insights_enabled(db):
+    if runs_automatically(db, "insights"):
         background.add_task(insights_in_background, batch.id)
 
     return {
@@ -574,12 +579,59 @@ def get_batch_review(batch_id: int, db: Session = Depends(get_db)):
         imported_at=batch.imported_at,
         transaction_count=len(txn_responses),
         categorised_count=categorised_count,
+        matched_at=batch.matched_at,
     )
 
     return ImportReviewResponse(
         batch=batch_response,
         transactions=txn_responses,
     )
+
+
+@router.post("/batches/{batch_id}/match")
+def match_batch(batch_id: int, db: Session = Depends(get_db)):
+    """Ask the matching model about this import's transactions: which are already in the
+    ledger, which are transfers between the user's accounts, and which card taps they are.
+    For when matching runs on demand rather than straight after each import. Exact duplicates
+    were flagged on import, so they aren't flagged again."""
+    batch = db.get(ImportBatch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    try:
+        resolve_task(db, "matching")
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    rows = []
+    for txn in db.execute(
+        select(Transaction)
+        .options(joinedload(Transaction.postings))
+        .where(
+            Transaction.import_batch_id == batch_id,
+            Transaction.duplicate_of_id.is_(None),
+            Transaction.transfer_peer_id.is_(None),
+        )
+        .order_by(Transaction.date, Transaction.id)
+    ).unique().scalars():
+        bank = next((p for p in txn.postings if p.account_id == batch.account_id), None)
+        other = next((p for p in txn.postings if p is not bank), None)
+        if bank is not None and other is not None and len(txn.postings) == 2:
+            rows.append(NewRow(txn, bank, other))
+
+    flag_duplicates(db, batch.id, batch.account_id, rows, exact=False)
+    transfers_pending = _get_transfers_pending_account(db)
+    if transfers_pending:
+        link_transfers(
+            db, batch.account_id, rows, transfers_pending, _get_uncategorised_account(db)
+        )
+    taps = reconcile_taps(db)
+    batch.matched_at = datetime.now(UTC)
+    db.commit()
+    return {
+        "duplicates": sum(1 for r in rows if r.txn.duplicate_of_id is not None),
+        "transfers": sum(1 for r in rows if r.txn.transfer_peer_id is not None),
+        "taps": taps,
+    }
 
 
 @router.post("/batches/{batch_id}/confirm-all")

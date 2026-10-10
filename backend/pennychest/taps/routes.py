@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from pennychest.accounts.models import Account
 from pennychest.ai import learned
-from pennychest.ai.matching import matching_enabled
+from pennychest.ai.config import runs_automatically
+from pennychest.ai.providers import ProviderError, resolve_task
 from pennychest.core.database import get_db
 from pennychest.rules.engine import _get_match_type_map, find_matching_rule, get_all_rules_sorted
-from pennychest.taps.ai import categorise_tap_in_background, tap_categorising_enabled
+from pennychest.taps.ai import categorise_tap, categorise_tap_in_background
 from pennychest.taps.models import CardTap, WalletCard
 from pennychest.taps.schemas import (
     TapIngest,
@@ -163,9 +164,9 @@ def ingest_tap(body: TapIngest, background: BackgroundTasks, db: Session = Depen
     db.commit()
     db.refresh(tap)
     # After the response is sent, so the phone never waits on (or sees) a model.
-    if tap_categorising_enabled(db):
+    if runs_automatically(db, "taps"):
         background.add_task(categorise_tap_in_background, tap.id)
-    if tap.transaction_id is None and matching_enabled(db):
+    if tap.transaction_id is None and runs_automatically(db, "matching"):
         background.add_task(reconcile_in_background)
     return _to_responses(db, [tap])[0]
 
@@ -190,6 +191,20 @@ def _get_tap(db: Session, tap_id: int) -> CardTap:
     if not tap:
         raise HTTPException(status_code=404, detail="Tap not found")
     return tap
+
+
+@router.post("/{tap_id}/categorise", response_model=TapResponse)
+def categorise_tap_now(tap_id: int, db: Session = Depends(get_db)):
+    """Suggest a category for a tap, for when card taps are categorised on demand rather than
+    as each one arrives."""
+    tap = _get_tap(db, tap_id)
+    try:
+        resolve_task(db, "taps")
+        categorise_tap(db, tap)
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.refresh(tap)
+    return _to_responses(db, [tap])[0]
 
 
 @router.post("/{tap_id}/dismiss", response_model=TapResponse)

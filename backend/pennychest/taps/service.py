@@ -8,7 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pennychest.accounts.models import Account
-from pennychest.ai.matching import MIN_PROBABILITY, ask_pairs, matching_enabled
+from pennychest.ai.config import task_available
+from pennychest.ai.matching import MIN_PROBABILITY, ask_pairs
 from pennychest.ai.providers import ProviderError
 from pennychest.core.database import SessionLocal
 from pennychest.taps.ai import apply_tap_category
@@ -159,7 +160,7 @@ def reconcile(db: Session, *, use_model: bool = True) -> int:
     )
 
     linked = 0
-    model_ready = matching_enabled(db)
+    model_ready = task_available(db, "matching")
     for tap in taps:
         account = accounts[tap.card_name]
         if tap.currency != account.currency:

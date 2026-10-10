@@ -5,7 +5,8 @@ import httpx
 import pytest
 
 from pennychest.ai import providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
+from tests.conftest import use_model
 
 
 class FakeAPI:
@@ -91,8 +92,12 @@ def test_config_lists_providers_without_revealing_secrets(client, db_session):
     config = client.get("/api/ai/config").json()
 
     by_id = {p["id"]: p for p in config["providers"]}
-    assert set(by_id) == {"anthropic", "openai", "google", "vertex", "typesafe", "ollama"}
-    assert by_id["typesafe"]["tasks"] == ["categorise", "check_actions", "insights", "matching", "taps"]
+    assert set(by_id) == {
+        "anthropic", "openai", "google", "vertex", "typesafe", "openai_decisions", "ollama"
+    }
+    assert {p["id"] for p in config["providers"] if p["kind"] == "decision"} == {
+        "typesafe", "openai_decisions"
+    }
     assert by_id["openai"]["configured"] is True
     assert by_id["anthropic"]["configured"] is False
     key_field = next(f for f in by_id["openai"]["fields"] if f["key"] == "api_key")
@@ -121,32 +126,90 @@ def test_save_and_clear_provider_fields(client):
     assert typesafe()["configured"] is False
 
 
-def test_choose_task_validates_provider_capabilities(client):
-    def choose(task, provider, model="m"):
-        return client.put(f"/api/ai/tasks/{task}", json={"provider": provider, "model": model})
+def test_choose_model_checks_its_kind(client):
+    def choose(kind, provider, model="m"):
+        return client.put(f"/api/ai/models/{kind}", json={"provider": provider, "model": model})
 
-    assert choose("rules", "typesafe").status_code == 400
-    assert choose("chat", "typesafe").status_code == 400
-    assert choose("categorise", "typesafe", "").status_code == 400
+    assert choose("llm", "typesafe").status_code == 400
+    assert choose("decision", "openai").status_code == 400
+    assert choose("decision", "typesafe", "").status_code == 400
     assert choose("nope", "openai").status_code == 404
-    assert choose("categorise", "typesafe", "jev-latest").status_code == 204
+    assert choose("decision", "typesafe", "jev-latest").status_code == 204
 
-    task = client.get("/api/ai/config").json()["tasks"]["categorise"]
-    assert task["provider"] == "typesafe" and task["model"] == "jev-latest"
-    assert task["ready"] is False and "API key" in task["problem"]
+    config = client.get("/api/ai/config").json()
+    assert config["models"]["decision"]["provider"] == "typesafe"
+    assert config["models"]["decision"]["ready"] is False
+    assert "API key" in config["models"]["decision"]["problem"]
 
     client.put("/api/ai/providers/typesafe", json={"values": {"api_key": "ts-1"}})
-    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["ready"] is True
+    assert client.get("/api/ai/config").json()["models"]["decision"]["ready"] is True
 
-    assert client.put("/api/ai/tasks/categorise", json={"provider": None}).status_code == 204
-    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["provider"] is None
+    assert client.put("/api/ai/models/decision", json={"provider": None}).status_code == 204
+    assert client.get("/api/ai/config").json()["models"]["decision"]["provider"] is None
+
+
+def test_tasks_share_the_model_of_their_kind(client, db_session):
+    set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
+    set_provider_values(db_session, "openai", {"api_key": "sk-1"})
+    for task in ("categorise", "chat", "rules"):
+        client.put(f"/api/ai/tasks/{task}", json={"enabled": True})
+    client.put("/api/ai/models/decision", json={"provider": "typesafe", "model": "jev-latest"})
+    client.put("/api/ai/models/llm", json={"provider": "openai", "model": "gpt-5-mini"})
+
+    tasks = client.get("/api/ai/config").json()["tasks"]
+    # Tasks that can use either prefer the decision model, and run by themselves with it
+    assert tasks["categorise"] == {
+        **tasks["categorise"],
+        "kinds": ["decision", "llm"],
+        "kind": "decision",
+        "provider": "typesafe",
+        "mode": "automatic",
+        "ready": True,
+    }
+    assert tasks["chat"]["provider"] == "openai" and tasks["chat"]["mode"] is None
+    assert tasks["rules"]["kinds"] == ["llm"]
+
+    # With a language model, tasks only run when asked unless told otherwise
+    client.put("/api/ai/tasks/categorise", json={"kind": "llm"})
+    task = client.get("/api/ai/config").json()["tasks"]["categorise"]
+    assert task["provider"] == "openai" and task["mode"] == "on_demand"
+    client.put("/api/ai/tasks/categorise", json={"mode": "automatic"})
+    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["mode"] == "automatic"
+
+    client.put("/api/ai/tasks/categorise", json={"enabled": False})
+    task = client.get("/api/ai/config").json()["tasks"]["categorise"]
+    assert task["enabled"] is False and task["provider"] is None
+    assert "turned off" in task["problem"]
+
+
+def test_task_settings_are_checked(client):
+    def update(task, **body):
+        return client.put(f"/api/ai/tasks/{task}", json=body).status_code
+
+    assert update("rules", kind="decision") == 400
+    assert update("chat", mode="automatic") == 400
+    assert update("categorise", mode="sometimes") == 400
+    assert update("nope", enabled=True) == 404
+    assert update("categorise", kind="llm", mode="on_demand", enabled=True) == 204
+
+
+def test_new_installs_have_every_task_on(client, db_session):
+    from pennychest.ai.config import TASKS
+    from pennychest.settings.models import AppSetting
+
+    for task in TASKS:
+        db_session.delete(db_session.get(AppSetting, f"ai.task.{task}.enabled"))
+    db_session.commit()
+    tasks = client.get("/api/ai/config").json()["tasks"]
+    assert all(t["enabled"] for t in tasks.values())
 
 
 def test_config_endpoints_require_session(anon_client):
     assert anon_client.get("/api/ai/config").status_code == 401
     assert anon_client.put("/api/ai/providers/openai", json={"values": {}}).status_code == 401
     assert anon_client.post("/api/ai/providers/openai/models").status_code == 401
-    assert anon_client.put("/api/ai/tasks/categorise", json={"provider": None}).status_code == 401
+    assert anon_client.put("/api/ai/tasks/categorise", json={"enabled": False}).status_code == 401
+    assert anon_client.put("/api/ai/models/llm", json={"provider": None}).status_code == 401
 
 
 # Model lists
@@ -257,7 +320,7 @@ def test_categorise_needs_a_configured_task(client):
 def test_categorise_with_jev_uses_choices_and_confidence(client, api, db_session):
     (tesco, mystery), _ = _imported_transactions(client, "TESCO STORES 2041", "SQ *MYSTERY")
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "categorise", "typesafe", "jev-latest")
+    use_model(db_session, "categorise", "typesafe", "jev-latest")
     api.on("POST", "https://api.typesafe.ai/v1/systemone", (200, {
         "model": "jev-1.13.0",
         "answers": {
@@ -291,7 +354,7 @@ def test_categorise_with_jev_uses_choices_and_confidence(client, api, db_session
 def test_categorise_with_openai_structured_output(client, api, db_session):
     (tesco,), _ = _imported_transactions(client, "TESCO STORES")
     set_provider_values(db_session, "openai", {"api_key": "sk-1"})
-    set_task(db_session, "categorise", "openai", "gpt-5-mini")
+    use_model(db_session, "categorise", "openai", "gpt-5-mini")
     content = json.dumps({"categorisations": [
         {"transaction_id": tesco, "account_full_path": "Expenses:Groceries"},
         {"transaction_id": 99999, "account_full_path": "Expenses:Groceries"},
@@ -328,7 +391,7 @@ def test_categorise_with_anthropic_structured_output(client, db_session, monkeyp
     monkeypatch.setattr(providers, "anthropic_client",
                         lambda api_key: SimpleNamespace(messages=SimpleNamespace(create=create)))
     set_provider_values(db_session, "anthropic", {"api_key": "sk-ant-1"})
-    set_task(db_session, "categorise", "anthropic", "claude-haiku-4-5")
+    use_model(db_session, "categorise", "anthropic", "claude-haiku-4-5")
 
     assert client.post("/api/ai/categorise/all").json() == {"updated": 1}
     request = calls[0]
@@ -345,7 +408,7 @@ def test_anthropic_refusal_is_reported(client, db_session, monkeypatch):
         )
     ))
     set_provider_values(db_session, "anthropic", {"api_key": "sk-ant-1"})
-    set_task(db_session, "categorise", "anthropic", "claude-opus-5")
+    use_model(db_session, "categorise", "anthropic", "claude-opus-5")
 
     response = client.post("/api/ai/categorise/all")
     assert response.status_code == 400
@@ -359,7 +422,7 @@ def test_anthropic_refusal_is_reported(client, db_session, monkeypatch):
 def test_suggest_rules_with_ollama(client, api, db_session):
     _imported_transactions(client, "TESCO STORES")
     set_provider_values(db_session, "ollama", {"url": "http://ollama:11434"})
-    set_task(db_session, "rules", "ollama", "qwen3:4b")
+    use_model(db_session, "rules", "ollama", "qwen3:4b")
     content = json.dumps({"rules": [
         {"pattern": "TESCO", "match_type": "substring",
          "target_account_full_path": "Expenses:Groceries", "priority": 500,
@@ -381,9 +444,9 @@ def test_suggest_rules_with_ollama(client, api, db_session):
     assert sent["format"]["properties"]["rules"]["items"]["properties"]["match_type"]["enum"]
 
 
-def test_rules_task_rejects_jev(client, db_session):
+def test_rules_need_a_language_model(client, db_session):
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "rules", "typesafe", "jev-latest")
+    use_model(db_session, "rules", "typesafe", "jev-latest")
     response = client.post("/api/ai/suggest-rules")
     assert response.status_code == 400
-    assert "can't be used" in response.json()["detail"]
+    assert "Choose a language model" in response.json()["detail"]
