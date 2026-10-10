@@ -54,6 +54,8 @@ export function CsvMapping({
   const missing = missingCsvFields(columns);
   const aiError = suggest.data?.ai_error ?? suggest.error?.message ?? preview.ai_error;
   const sample = preview.rows.slice(0, SAMPLE_ROWS);
+  // Each column's first value, to show what it holds; money in may be blank on the first row
+  const example = (i: number) => preview.rows.find((row) => row[i]?.trim())?.[i];
 
   return (
     <div className="space-y-3 rounded-lg border p-3">
@@ -117,7 +119,7 @@ export function CsvMapping({
                   {preview.headers.map((header, i) => (
                     <SelectItem key={i} value={String(i)}>
                       {header || `Column ${i + 1}`}
-                      {sample[0]?.[i] ? ` · e.g. ${sample[0][i]}` : ""}
+                      {example(i) ? ` · e.g. ${example(i)}` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
