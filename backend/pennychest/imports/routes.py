@@ -1,14 +1,16 @@
 import hashlib
+import json
 import os
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, aliased, joinedload
 
 from pennychest.accounts.models import Account, AccountType
-from pennychest.ai.config import runs_automatically
+from pennychest.ai.config import runs_automatically, task_available
 from pennychest.ai.insights import run_in_background as insights_in_background
 from pennychest.ai.learned import learned_enabled
 from pennychest.ai.providers import ProviderError, resolve_task
@@ -16,9 +18,12 @@ from pennychest.ai.routes import CategoriseOutcome, categorise_uncategorised
 from pennychest.core.config import settings
 from pennychest.core.database import get_db
 from pennychest.core.lookup_models import CategorisationSource, ImportSourceType
+from pennychest.imports import csv_mapping
 from pennychest.imports.base import discover_importers, find_importer, get_importer
+from pennychest.imports.csv_importer import FIELDS as CSV_FIELDS
+from pennychest.imports.csv_importer import CsvImporter, missing_fields, read_csv
 from pennychest.imports.matching import NewRow, describe_source, flag_duplicates, link_transfers
-from pennychest.imports.models import ImportBatch, RawImportRow
+from pennychest.imports.models import CsvTemplate, ImportBatch, RawImportRow
 from pennychest.imports.schemas import (
     DetectResponse,
     DuplicateOf,
@@ -55,6 +60,9 @@ def detect_import(
     file_content = file.file.read()
     filename = file.filename or ""
     importer = find_importer(file_content, filename)
+    if importer is None and _is_csv(filename) and get_importer("csv") is not None:
+        # A layout the CSV importer doesn't recognise: its columns are mapped before import
+        return DetectResponse(importer="csv", statement=None)
     if importer is None:
         supported = sorted(
             {f".{ext}" for imp in discover_importers().values() for ext in imp.file_types}
@@ -92,6 +100,111 @@ def detect_import(
             ),
         ),
     )
+
+
+def _is_csv(filename: str) -> bool:
+    return filename.lower().endswith((".csv", ".txt"))
+
+
+def _read_csv(content: bytes) -> tuple[list[str], list[list[str]]]:
+    try:
+        return read_csv(content)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise HTTPException(status_code=400, detail=f"Couldn't read the CSV file: {e}")
+
+
+def _columns_response(columns: dict[str, csv_mapping.Suggestion]) -> dict:
+    return {
+        field: {"column": s.column, "source": s.source, "confidence": s.confidence}
+        for field, s in columns.items()
+    }
+
+
+@router.post("/csv/preview")
+def preview_csv(
+    file: UploadFile = File(...),
+    ai: bool = Form(default=False),
+    db: Session = Depends(get_db),
+):
+    """A CSV file's headers and first rows, and which column holds each field: from a saved
+    template, the column names, or the model (straight away if it runs automatically and the
+    names don't say, or when asked with `ai`)."""
+    headers, data = _read_csv(file.file.read())
+    rows = data[: csv_mapping.SAMPLE_ROWS]
+    named = csv_mapping.by_name(headers)
+    use_ai = ai or (
+        bool(missing_fields({f: s.column for f, s in named.items()}))
+        and runs_automatically(db, "csv_columns")
+    )
+    columns, template, ai_error = csv_mapping.suggest(db, headers, rows, use_ai)
+    return {
+        "headers": headers,
+        "rows": rows,
+        "template": {"id": template.id, "name": template.name} if template else None,
+        "columns": _columns_response(columns),
+        "ai_available": task_available(db, "csv_columns"),
+        "ai_error": ai_error,
+    }
+
+
+class CsvTemplateIn(BaseModel):
+    name: str
+    headers: list[str]
+    columns: dict[str, int]
+
+
+def _template_response(template: CsvTemplate) -> dict:
+    return {
+        "id": template.id,
+        "name": template.name,
+        "headers": json.loads(template.header_key),
+        "columns": template.columns,
+    }
+
+
+def _check_columns(columns: dict[str, int], width: int) -> None:
+    unknown = set(columns) - set(CSV_FIELDS)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown fields: {', '.join(sorted(unknown))}")
+    if any(not 0 <= c < width for c in columns.values()):
+        raise HTTPException(status_code=400, detail="A column is outside the file.")
+    missing = missing_fields(columns)
+    if missing:
+        raise HTTPException(
+            status_code=400, detail=f"Choose the columns for the {' and '.join(missing)}."
+        )
+
+
+@router.get("/csv/templates")
+def list_csv_templates(db: Session = Depends(get_db)):
+    templates = db.execute(select(CsvTemplate).order_by(CsvTemplate.name)).scalars()
+    return [_template_response(t) for t in templates]
+
+
+@router.post("/csv/templates", status_code=201)
+def save_csv_template(body: CsvTemplateIn, db: Session = Depends(get_db)):
+    """Save a column mapping, to use for later files with the same headers."""
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Give the template a name.")
+    if db.execute(select(CsvTemplate).where(CsvTemplate.name == name)).first():
+        raise HTTPException(status_code=400, detail=f"There's already a template called {name}.")
+    _check_columns(body.columns, len(body.headers))
+    template = CsvTemplate(
+        name=name, header_key=csv_mapping.header_key(body.headers), columns=body.columns
+    )
+    db.add(template)
+    db.commit()
+    return _template_response(template)
+
+
+@router.delete("/csv/templates/{template_id}", status_code=204)
+def delete_csv_template(template_id: int, db: Session = Depends(get_db)):
+    template = db.get(CsvTemplate, template_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.delete(template)
+    db.commit()
 
 
 def _get_transfers_pending_account(db: Session) -> Account | None:
@@ -160,6 +273,8 @@ def upload_import(
     file: UploadFile = File(...),
     account_id: int = Form(...),
     importer_name: str = Form(default="csv"),
+    # CSV only: a JSON {field: column} mapping, for layouts the importer doesn't recognise
+    csv_columns: str | None = Form(default=None),
     db: Session = Depends(get_db),
 ):
     """Upload a file and import transactions.
@@ -193,7 +308,15 @@ def upload_import(
 
     # Parse the file
     try:
-        parsed_rows = importer.parse(file_content)
+        if csv_columns is not None and isinstance(importer, CsvImporter):
+            columns = json.loads(csv_columns)
+            if not isinstance(columns, dict):
+                raise ValueError("csv_columns must be a JSON object")
+            headers, _ = read_csv(file_content)
+            _check_columns(columns, len(headers))
+            parsed_rows = importer.parse_mapped(file_content, columns)
+        else:
+            parsed_rows = importer.parse(file_content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

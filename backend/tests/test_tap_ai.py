@@ -186,6 +186,7 @@ def test_tasks_that_can_run_by_themselves(client):
         "categorise",
         "matching",
         "insights",
+        "csv_columns",
     }
 
 

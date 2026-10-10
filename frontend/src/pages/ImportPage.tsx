@@ -10,7 +10,11 @@ import {
   type StatementDetection,
   type Account,
   type OpeningBalance,
+  type CsvColumns,
+  type CsvPreview,
 } from "../api/client";
+import { CsvMapping } from "../components/CsvMapping";
+import { columnsFromPreview, missingCsvFields } from "../lib/csv";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -148,6 +152,9 @@ type FileEntry = {
   batchId: number | null;
   error: string | null;
   aiNote?: string | null;
+  // CSV files: the file's columns, and which holds each field
+  csv?: CsvPreview | null;
+  csvColumns?: CsvColumns;
 };
 
 // ---------------------------------------------------------------------------
@@ -285,11 +292,14 @@ export function ImportPage() {
       const accountId = statement?.suggested_account_id
         ? String(statement.suggested_account_id)
         : "";
+      const csv = importer === "csv" ? await importsApi.csvPreview(file) : null;
       updateFile(id, {
         phase: accountId ? "queued" : "confirming",
         detection: statement,
         accountId,
         importerName: importer,
+        csv,
+        csvColumns: csv ? columnsFromPreview(csv) : undefined,
       });
     } catch (e) {
       updateFile(id, {
@@ -324,6 +334,7 @@ export function ImportPage() {
         entry.file,
         parseInt(entry.accountId),
         entry.importerName,
+        entry.csv ? entry.csvColumns : undefined,
       );
       updateFile(entry.id, {
         phase: "done",
@@ -509,6 +520,7 @@ export function ImportPage() {
               allAccounts={accounts}
               leafBankAccounts={bankAccounts}
               onAccountChange={(id) => updateFile(entry.id, { accountId: id })}
+              onCsvChange={(csv, csvColumns) => updateFile(entry.id, { csv, csvColumns })}
               onImport={() => importEntry(entry)}
               onRemove={() =>
                 setPendingFiles((prev) => prev.filter((f) => f.id !== entry.id))
@@ -876,6 +888,7 @@ function FileCard({
   allAccounts,
   leafBankAccounts,
   onAccountChange,
+  onCsvChange,
   onImport,
   onRemove,
   onReview,
@@ -885,6 +898,7 @@ function FileCard({
   allAccounts: Account[];
   leafBankAccounts: Account[];
   onAccountChange: (id: string) => void;
+  onCsvChange: (csv: CsvPreview, columns: CsvColumns) => void;
   onImport: () => void;
   onRemove: () => void;
   onReview: () => void;
@@ -1009,6 +1023,8 @@ function FileCard({
   };
 
   const canRemove = entry.phase !== "uploading";
+  // A CSV can't be imported until its columns are chosen
+  const csvIncomplete = !!entry.csv && missingCsvFields(entry.csvColumns ?? {}).length > 0;
 
   return (
     <div className="rounded-lg border p-4 space-y-3">
@@ -1066,6 +1082,16 @@ function FileCard({
           <StatementSummary detection={entry.detection} />
         )}
 
+      {/* CSV: which column holds what */}
+      {entry.csv && (entry.phase === "confirming" || entry.phase === "queued") && (
+        <CsvMapping
+          file={entry.file}
+          preview={entry.csv}
+          columns={entry.csvColumns ?? {}}
+          onChange={onCsvChange}
+        />
+      )}
+
       {/* Queued: show matched account + Import button */}
       {entry.phase === "queued" && (
         <div className="flex items-center justify-between">
@@ -1084,7 +1110,7 @@ function FileCard({
               )}
             </span>
           </p>
-          <Button size="sm" onClick={onImport}>
+          <Button size="sm" onClick={onImport} disabled={csvIncomplete}>
             <Upload className="h-3.5 w-3.5 mr-1" />
             Import
           </Button>
@@ -1280,7 +1306,7 @@ function FileCard({
 
           <Button
             onClick={onImport}
-            disabled={!entry.accountId}
+            disabled={!entry.accountId || csvIncomplete}
             className="w-full"
           >
             <Upload className="h-4 w-4 mr-2" />
