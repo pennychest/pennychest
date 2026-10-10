@@ -2,8 +2,9 @@ import httpx
 import pytest
 
 from pennychest.ai import providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
 from pennychest.core.config import settings
+from tests.conftest import use_model
 from tests.test_ai import _expense_account, _source_id
 from tests.test_tap_ai import FakeJev
 
@@ -23,7 +24,7 @@ def jev(db_session, monkeypatch):
     fake.answer("Expenses:Groceries", 0.9)
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "categorise", "typesafe", "jev-latest")
+    use_model(db_session, "categorise", "typesafe", "jev-latest")
     return fake
 
 
@@ -83,17 +84,16 @@ def test_the_import_can_be_undone_in_one_go(client, jev):
         assert expense["categorised_by_id"] == import_default
 
 
-def test_can_be_turned_off(client, jev):
-    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["auto"] is True
-    assert client.put("/api/ai/categorise/auto", json={"enabled": False}).status_code == 204
-    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["auto"] is False
+def test_can_run_on_demand_instead(client, jev):
+    assert client.get("/api/ai/config").json()["tasks"]["categorise"]["mode"] == "automatic"
+    assert client.put("/api/ai/tasks/categorise", json={"mode": "on_demand"}).status_code == 204
     result = _import(client, _accounts(client))
     assert result["ai_categorised_count"] == 0 and result["uncategorised_count"] == 2
     assert jev.requests == []
 
 
 def test_nothing_runs_without_a_model(client, jev, db_session):
-    set_task(db_session, "categorise", None, None)
+    use_model(db_session, "categorise", None, None)
     result = _import(client, _accounts(client))
     assert result["ai_categorised_count"] == 0 and result["ai_error"] is None
     assert jev.requests == []
@@ -133,7 +133,7 @@ def test_only_what_rules_left_is_sent(client, jev):
 
 
 def test_the_button_is_undoable_too(client, jev):
-    client.put("/api/ai/categorise/auto", json={"enabled": False})
+    client.put("/api/ai/tasks/categorise", json={"mode": "on_demand"})
     result = _import(client, _accounts(client))
     response = client.post(f"/api/ai/categorise/batch/{result['batch_id']}")
     assert response.json() == {"updated": 2}

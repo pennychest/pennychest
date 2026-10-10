@@ -50,7 +50,7 @@ An agent can always look things up. It can change things only if you allow it, s
 
 `delete_transactions` and `delete_budget` are marked as destructive, so clients that support it ask you before running them. Every change an agent makes is listed under **Settings → Changes made by AI** and can be undone.
 
-`recurring_payments` and `unusual_charges` use the labels and scores from the *Flagging subscriptions and unusual charges* [task](ai-integration.md#automatic). Without a model for that task, they have less to go on.
+`recurring_payments` and `unusual_charges` use the labels and scores from the *Flagging subscriptions and unusual charges* [task](ai-integration.md#tasks). Without it, they have less to go on.
 
 ### Things to ask
 

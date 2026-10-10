@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from pennychest.accounts.models import Account, AccountType
 from pennychest.ai import learned
 from pennychest.ai.categorise import TxnInput, categorise_transactions
-from pennychest.ai.config import get_task
 from pennychest.ai.models import AIRequestLog
 from pennychest.ai.providers import ProviderError, resolve_task
 from pennychest.core.database import SessionLocal
@@ -21,11 +20,6 @@ from pennychest.taps.models import CardTap
 from pennychest.transactions.models import Posting, Transaction
 
 UNCATEGORISED_PATH = "Expenses:Uncategorised"
-
-
-def tap_categorising_enabled(db: Session) -> bool:
-    provider_id, model = get_task(db, "taps")
-    return bool(provider_id and model)
 
 
 def _rule_matches(db: Session, tap: CardTap) -> bool:

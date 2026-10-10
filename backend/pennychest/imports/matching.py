@@ -2,9 +2,10 @@
 spotting ones already recorded (from an overlapping statement or added by hand), and pairing
 up transfers between the user's own accounts whose two sides are described differently.
 
-Exact duplicates are flagged without a model. Everything else needs a model chosen for the
-"matching" task and acts only on answers at or above MIN_PROBABILITY; if the model fails, the
-import goes ahead without it (the error is in the AI request logs)."""
+Exact duplicates are flagged without a model. Everything else needs the "matching" task's model,
+straight after the import if it runs automatically or later from the import's review page, and
+acts only on answers at or above MIN_PROBABILITY; if the model fails, the import goes ahead
+without it (the error is in the AI request logs)."""
 
 import re
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from pennychest.accounts.models import Account
-from pennychest.ai.matching import MIN_PROBABILITY, ask_pairs, matching_enabled
+from pennychest.ai.matching import MIN_PROBABILITY, ask_pairs
 from pennychest.ai.providers import ProviderError
 from pennychest.core.lookup_models import CategorisationSource
 from pennychest.transactions.models import Posting, Transaction
@@ -65,9 +66,18 @@ def describe_source(txn: Transaction) -> str:
     return f"imported from {txn.import_batch.file_name or 'a statement'}"
 
 
-def flag_duplicates(db: Session, batch_id: int, account_id: int, rows: list[NewRow]) -> None:
+def flag_duplicates(
+    db: Session,
+    batch_id: int,
+    account_id: int,
+    rows: list[NewRow],
+    *,
+    exact: bool = True,
+    use_model: bool = True,
+) -> None:
     """Point each new transaction that looks like one already on the same account (from
-    another import, or added by hand) at that transaction, for the user to review."""
+    another import, or added by hand) at that transaction, for the user to review. `exact`
+    flags identical ones; `use_model` asks the matching model about the rest."""
     candidates: dict[int, list[Transaction]] = {}
     for row in rows:
         found = (
@@ -96,20 +106,20 @@ def flag_duplicates(db: Session, batch_id: int, account_id: int, rows: list[NewR
     claimed: set[int] = set()
     ask: list[tuple[NewRow, Transaction]] = []
     for row in rows:
-        exact = [
+        same = [
             c
             for c in candidates.get(row.txn.id, [])
             if c.date == row.txn.date
             and _normalise(c.description) == _normalise(row.txn.description)
             and c.id not in claimed
         ]
-        if exact:
-            row.txn.duplicate_of_id = exact[0].id
-            claimed.add(exact[0].id)
-        else:
+        if same and exact:
+            row.txn.duplicate_of_id = same[0].id
+            claimed.add(same[0].id)
+        elif not same:
             ask += [(row, c) for c in candidates.get(row.txn.id, [])]
 
-    if not ask or not matching_enabled(db):
+    if not ask or not use_model:
         return
     try:
         probabilities = ask_pairs(
@@ -154,7 +164,7 @@ def link_transfers(
         and r.txn.transfer_peer_id is None
         and r.txn.duplicate_of_id is None
     ]
-    if not rows or not matching_enabled(db):
+    if not rows:
         return
 
     candidate_txn = aliased(Transaction)

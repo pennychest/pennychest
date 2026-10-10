@@ -5,8 +5,9 @@ import httpx
 import pytest
 
 from pennychest.ai import providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
 from pennychest.taps import ai as tap_ai
+from tests.conftest import use_model
 from tests.test_ai import _expense_account, _imported_transactions, _source_id
 from tests.test_taps import _tap, api_token  # noqa: F401
 
@@ -44,7 +45,7 @@ def jev(db_session, monkeypatch):
     fake = FakeJev()
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "taps", "typesafe", "jev-latest")
+    use_model(db_session, "taps", "typesafe", "jev-latest")
     return fake
 
 
@@ -178,12 +179,33 @@ def test_statement_categories_are_never_overwritten(client, jev):
     assert _expense_account(client, txn_id) == "Expenses:Groceries"
 
 
-def test_config_marks_tap_categorising_as_automatic(client):
+def test_tasks_that_can_run_by_themselves(client):
     tasks = client.get("/api/ai/config").json()["tasks"]
-    assert {name for name, t in tasks.items() if t["automatic"]} == {
+    assert {name for name, t in tasks.items() if t["mode"] is not None} == {
         "taps",
         "categorise",
-        "check_actions",
         "matching",
         "insights",
     }
+
+
+def test_on_demand_taps_wait_to_be_asked(client, jev, db_session):
+    use_model(db_session, "taps", "typesafe", "jev-latest", mode="on_demand")
+    _categories(client)
+    jev.answer("Expenses:Groceries", 0.92)
+    _tap(client)
+    assert jev.requests == []
+
+    [tap] = client.get("/api/taps").json()
+    response = client.post(f"/api/taps/{tap['id']}/categorise")
+    assert response.status_code == 200
+    assert response.json()["suggested_account_full_path"] == "Expenses:Groceries"
+
+
+def test_asking_for_a_tap_category_needs_the_task_on(client, jev_off):
+    _categories(client)
+    _tap(client)
+    [tap] = client.get("/api/taps").json()
+    response = client.post(f"/api/taps/{tap['id']}/categorise")
+    assert response.status_code == 400
+    assert "turned off" in response.json()["detail"]

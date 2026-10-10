@@ -41,6 +41,8 @@ import {
   RefreshCw,
   Bot,
   Lightbulb,
+  Link2,
+  Repeat,
 } from "lucide-react";
 
 export function ImportReviewPage() {
@@ -105,6 +107,16 @@ export function ImportReviewPage() {
     },
   });
 
+  // For when matching and insights run on demand rather than straight after each import
+  const matchMutation = useMutation({
+    mutationFn: () => importsApi.match(parseInt(batchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["import-review", batchId] });
+      queryClient.invalidateQueries({ queryKey: ["taps"] });
+    },
+  });
+  const insightsMutation = useMutation({ mutationFn: () => aiApi.insightsBatch(parseInt(batchId)) });
+
   useEffect(() => {
     if (!aiCategoriseMutation.isPending) { setAiElapsed(0); return; }
     const t = setInterval(() => setAiElapsed((s) => s + 1), 1000);
@@ -160,6 +172,8 @@ export function ImportReviewPage() {
   ).length;
   const categoriseTask = aiConfig?.tasks.categorise;
   const rulesTask = aiConfig?.tasks.rules;
+  const matchingTask = aiConfig?.tasks.matching;
+  const insightsTask = aiConfig?.tasks.insights;
 
   return (
     <div className="space-y-4">
@@ -238,6 +252,28 @@ export function ImportReviewPage() {
           <Lightbulb className="h-4 w-4 mr-1" />
           Suggest Rules
         </Button>
+        {matchingTask?.ready && matchingTask.mode === "on_demand" && !batch.matched_at && (
+          <Button
+            variant="outline"
+            onClick={() => matchMutation.mutate()}
+            disabled={matchMutation.isPending}
+            title="Find transactions you already have, transfers between your accounts, and card taps"
+          >
+            <Link2 className="h-4 w-4 mr-1" />
+            {matchMutation.isPending ? "Matching…" : "Find matches with AI"}
+          </Button>
+        )}
+        {insightsTask?.ready && insightsTask.mode === "on_demand" && !insightsMutation.isSuccess && (
+          <Button
+            variant="outline"
+            onClick={() => insightsMutation.mutate()}
+            disabled={insightsMutation.isPending}
+            title="Mark subscriptions and bills, and flag unusual charges"
+          >
+            <Repeat className="h-4 w-4 mr-1" />
+            {insightsMutation.isPending ? "Checking…" : "Check for subscriptions"}
+          </Button>
+        )}
         {aiCategoriseMutation.isPending && categoriseTask?.provider === "ollama" && (
           <span className="text-xs text-muted-foreground self-center">
             Local models can take a minute or two — hang tight.
@@ -253,6 +289,20 @@ export function ImportReviewPage() {
         {aiCategoriseMutation.isError && (
           <span className="text-sm text-destructive self-center">
             {aiCategoriseMutation.error.message}
+          </span>
+        )}
+        {matchMutation.isSuccess && (
+          <span className="text-sm text-green-600 self-center">
+            Found {plural(matchMutation.data.duplicates, "duplicate")},{" "}
+            {plural(matchMutation.data.transfers, "transfer")} and {plural(matchMutation.data.taps, "card tap")}
+          </span>
+        )}
+        {insightsMutation.isSuccess && (
+          <span className="text-sm text-green-600 self-center">Checked for subscriptions and unusual charges</span>
+        )}
+        {(matchMutation.isError || insightsMutation.isError) && (
+          <span className="text-sm text-destructive self-center">
+            {matchMutation.error?.message ?? insightsMutation.error?.message}
           </span>
         )}
       </div>
@@ -806,4 +856,8 @@ function CreateRuleFromImportDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function plural(count: number, noun: string) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

@@ -5,9 +5,10 @@ import httpx
 import pytest
 
 from pennychest.ai import insights, providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
 from pennychest.ai.providers import Call
 from pennychest.core.config import settings
+from tests.conftest import use_model
 
 
 class FakeJev:
@@ -61,7 +62,7 @@ def jev(db_session, monkeypatch):
     fake.score = lambda c: 3.0 if float(c["charge"]["amount"]) > 500 else 0.2
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "insights", "typesafe", "jev-latest")
+    use_model(db_session, "insights", "typesafe", "jev-latest")
     return fake
 
 
@@ -209,10 +210,20 @@ def test_llms_score_and_label_with_json(client, current, db_session, monkeypatch
             return Call({"labels": [{"index": i, "kind": "bill"} for i, _ in listing]}, {}, {})
 
     monkeypatch.setattr(insights, "resolve_task", lambda db, task: (FakeLLM(), {}, "m1"))
-    set_task(db_session, "insights", "openai", "gpt")
+    use_model(db_session, "insights", "openai", "gpt")
     batch_id = history["TESCO STORES"]["import_batch_id"]
     assert insights.run_after_import(db_session, batch_id) is None
     payments = _action(client, "recurring_payments", on="2026-09-10")["payments"]
     assert {p["kind"] for p in payments} == {"bill"}
     unusual = _action(client, "unusual_charges", start_date="2026-05-01", end_date="2026-09-30")
     assert {c["unusual_score"] for c in unusual["unusual_charges"]} == {0.667}
+
+
+def test_on_demand_insights_run_from_the_review_page(client, current, jev, db_session):
+    use_model(db_session, "insights", "typesafe", "jev-latest", mode="on_demand")
+    _import(client, current, HISTORY, "history.csv")
+    assert jev.requests == []
+
+    batch_id = max(b["id"] for b in client.get("/api/imports/batches").json())
+    assert client.post(f"/api/ai/insights/batch/{batch_id}").status_code == 200
+    assert jev.requests

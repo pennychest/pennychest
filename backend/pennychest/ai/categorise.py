@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pennychest.ai.providers import Provider, ProviderError, TypeSafeProvider
+from pennychest.ai.providers import DecisionProvider, Provider, ProviderError
 
 # Jev reports calibrated confidence; below this, leave the transaction uncategorised
 # rather than guess. Behind the learned model, 0.9 got 98.8% of a test set right while still
@@ -73,10 +73,10 @@ Return one entry per transaction id, using only accounts from the list above."""
     ], call.request, call.response
 
 
-def _with_jev(provider: TypeSafeProvider, cfg, model, transactions, account_paths):
+def _with_decision_model(provider: DecisionProvider, cfg, model, transactions, account_paths):
     if len(account_paths) > JEV_MAX_OPTIONS:
         raise ProviderError(
-            f"Jev can choose between at most {JEV_MAX_OPTIONS} accounts, "
+            f"{provider.label} can choose between at most {JEV_MAX_OPTIONS} accounts, "
             f"but you have {len(account_paths)}."
         )
     criteria = {path: None for path in account_paths}
@@ -119,8 +119,8 @@ def categorise_transactions(
     """Returns (categorisations, request_payload, response_payload). Only answers that name
     one of the given transactions and accounts are returned."""
     paths = sorted(account_paths)
-    if isinstance(provider, TypeSafeProvider):
-        results, request, response = _with_jev(provider, cfg, model, transactions, paths)
+    if isinstance(provider, DecisionProvider):
+        results, request, response = _with_decision_model(provider, cfg, model, transactions, paths)
     else:
         results, request, response = _with_llm(provider, cfg, model, transactions, paths)
     ids = {t.id for t in transactions}

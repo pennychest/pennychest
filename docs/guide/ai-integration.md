@@ -1,6 +1,6 @@
 # AI integration
 
-AI in PennyChest is optional, and switched off until you choose a provider. Without one, PennyChest still categorises with your rules and with [the model it learns from your own categories](categorisation.md#learning-from-your-categories), which runs inside PennyChest and sends nothing anywhere.
+AI in PennyChest is optional, and does nothing until you choose a model. Without one, PennyChest still categorises with your rules and with [the model it learns from your own categories](categorisation.md#learning-from-your-categories), which runs inside PennyChest and sends nothing anywhere.
 
 With a provider, AI can:
 
@@ -12,20 +12,24 @@ With a provider, AI can:
 
 To let your own AI assistant work with your ledger, see [AI agents (MCP)](mcp.md).
 
-## Providers
+## Models
 
-Add your credentials under **Settings → AI Integration → Providers**.
+**Settings → AI Integration** has two kinds of model. Choose one of each, or just one; every task that uses that kind shares it.
 
-| Provider | What you need | Good for |
+- **Decision model.** Picks from the answers it's given and says how sure it is, so PennyChest can leave an answer to you rather than act on a guess. It's fast and cheap, which suits jobs that run on every import and card tap. It can't chat or write rules.
+- **Language model.** A general-purpose LLM. It writes text, so it can do everything, including chat and suggesting rules, but it doesn't report a confidence, so every answer it gives is used. It's slower and costs more per request.
+
+Add a provider's credentials under its section, then choose it and a model at the top. Use **Refresh the model list** after adding a provider.
+
+| Provider | Kind | What you need |
 |---|---|---|
-| **TypeSafe AI (Jev)** | an API key from [TypeSafe AI](https://typesafe.ai) | Categorising, matching, insights and checking chat actions: every task except rule suggestions and chat |
-| **Anthropic (Claude)** | an API key from [console.anthropic.com](https://console.anthropic.com) | Every task |
-| **OpenAI** | an API key; the base URL can point at any OpenAI-compatible API | Every task |
-| **Google (Gemini)** | a Gemini API key | Every task |
-| **Google Vertex AI** | an express mode API key | Every task |
-| **Ollama (self-hosted)** | the URL of your Ollama server | Every task, with nothing leaving your network |
-
-Jev is a decision model. It picks from the options it's given and says how confident it is, so PennyChest can leave an answer to you rather than act on a guess. The others are general-purpose LLMs that don't report a confidence, so every answer they give is used. A sensible setup is Jev for the automatic tasks and an LLM for rules and chat.
+| **TypeSafe AI (Jev)** | Decision model | an API key from [TypeSafe AI](https://typesafe.ai) |
+| **OpenAI Decisions** | Decision model | an OpenAI API key; uses OpenAI's Decisions API |
+| **Anthropic (Claude)** | Language model | an API key from [console.anthropic.com](https://console.anthropic.com) |
+| **OpenAI** | Language model | an API key; the base URL can point at any OpenAI-compatible API |
+| **Google (Gemini)** | Language model | a Gemini API key |
+| **Google Vertex AI** | Language model | an express mode API key |
+| **Ollama (self-hosted)** | Language model | the URL of your Ollama server, with nothing leaving your network |
 
 !!! note
     Provider APIs are billed by the provider, per token or per request. The Anthropic API is separate from a claude.ai subscription.
@@ -43,30 +47,32 @@ Small models are fine for categorising. Chat works better with a larger model th
 
 ## Tasks
 
-Each task has its own provider and model, chosen under **Settings → AI Integration**, so you can use a cheap, fast model for the automatic tasks and a stronger one for chat. Use **Refresh the model list** after adding a provider. Any task without a provider is simply off.
+Under **Tasks**, each task can be turned on or off. Tasks that can use either kind of model choose which one they use. If you've chosen a decision model, they use it unless you change them.
 
-### Automatic
+| Task | What it does | Can use |
+|---|---|---|
+| **Categorising transactions** | Picks a category for imported transactions that no rule, card tap or learned category covered. | Either |
+| **Categorising card taps** | Suggests a category for each card tap. Your rules and your history come first. | Either |
+| **Matching taps, duplicates and transfers** | Picks the right statement line for a card tap when several fit, links transfers between your accounts, and flags transactions you already have. It acts only when it's at least 80% sure. | Either |
+| **Flagging subscriptions and unusual charges** | Marks which regular payments are subscriptions or bills, and flags charges that are unusual for the merchant or category. Chat uses both. | Either |
+| **Suggesting rules** | Proposes categorisation rules from your transactions, for you to accept or not. | Language model |
+| **Chat** | Answers questions about your finances and, if you allow it, makes changes for you. | Language model |
+| **Checking chat actions** | Before chat makes a change, checks that it's what you asked for. | Either |
 
-These run by themselves whenever new data arrives.
+### Automatically or when you ask
 
-| Task | What it does |
+The first four tasks can run **Automatically**, whenever new data arrives, or only **When I ask**:
+
+| Task | When you ask, run it from |
 |---|---|
-| **Categorising card taps** | Suggests a category for each card tap as it arrives. Your rules and your history come first. |
-| **Categorising transactions** | Picks a category for imported transactions that no rule, card tap or learned category covered. Untick **Run straight after each import** to run it only from an import's review page instead. |
-| **Checking chat actions** | Before chat makes a change, checks that it's what you asked for. If it isn't, the change is held back and chat asks you first. |
-| **Matching taps, duplicates and transfers** | When a card tap could be one of several statement lines, picks the right one. On import, it also links transfers between your accounts and flags transactions you already have. It acts only when it's at least 80% sure. |
-| **Flagging subscriptions and unusual charges** | After each import, marks which regular payments are subscriptions or bills, and flags charges that are unusual for the merchant or category. Chat uses both. |
+| Categorising transactions | an import's review page, **Suggest with AI** |
+| Categorising card taps | the **Card taps** page, **Suggest a category** on a tap |
+| Matching | an import's review page, **Find matches with AI**, or **Reconcile** on the **Card taps** page |
+| Subscriptions and unusual charges | an import's review page, **Check for subscriptions** |
+
+Unless you choose, tasks run automatically with a decision model, and when you ask with a language model, as a language model on every import can add up. Suggesting rules only ever runs when you ask; chat and checking its actions run whenever you chat.
 
 An AI failure never breaks an import or a card tap. Whatever didn't happen is left for you, and the error is recorded in the [AI request logs](#ai-request-logs).
-
-### On demand
-
-These run only when you press a button or ask.
-
-| Task | What it does |
-|---|---|
-| **Suggesting rules** | Proposes categorisation rules from your transactions, for you to accept or not. It needs a general-purpose model. |
-| **Chat** | Answers questions about your finances and, if you allow it, makes changes for you. |
 
 ## Chat
 
@@ -79,9 +85,9 @@ By default chat can only look things up. Under **What chat may change** in **Set
 - **Change categories, rules and budgets:** create and rename categories, add rules and set budgets
 - **Change transactions:** add, edit, recategorise, review and delete transactions
 
-Chat makes changes without stopping to ask first. If you've chosen a model for **Checking chat actions**, a second model reads the recent conversation before each change and judges whether you asked for it. If it judges you probably didn't, the change is held back, and chat tells you what it would do and asks you to confirm.
+Chat makes changes without stopping to ask first. If **Checking chat actions** is on, a second model reads the recent conversation before each change and judges whether you asked for it. If it judges you probably didn't, the change is held back, and chat tells you what it would do and asks you to confirm.
 
-The check is a safety net, not a guarantee. If no model is chosen for it, or the check model can't be reached, the change goes ahead. Every change can be undone.
+The check is a safety net, not a guarantee. If it's off, or its model can't be reached, the change goes ahead. Every change can be undone.
 
 ## Undoing AI changes
 

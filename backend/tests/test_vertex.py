@@ -1,7 +1,8 @@
 import json
 
 from pennychest.ai import providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
+from tests.conftest import use_model
 from tests.test_ai import _expense_account, _imported_transactions, api  # noqa: F401
 
 BASE = "https://aiplatform.googleapis.com/v1/publishers/google/models"
@@ -25,7 +26,7 @@ def test_refresh_checks_the_key_and_lists_models(client, api):  # noqa: F811
 
 def test_a_rejected_key_is_shown_until_replaced(client, api, db_session):  # noqa: F811
     client.put("/api/ai/providers/google", json={"values": {"api_key": "AQ.vertex-key"}})
-    set_task(db_session, "chat", "google", "gemini-2.5-flash")
+    use_model(db_session, "chat", "google", "gemini-2.5-flash")
     api.on(
         "GET",
         "https://generativelanguage.googleapis.com/v1beta/openai/models",
@@ -62,7 +63,7 @@ def test_an_unreachable_provider_is_not_marked_broken(client, api):  # noqa: F81
 def test_categorise_with_vertex_structured_output(client, api, db_session):  # noqa: F811
     (tesco,), _ = _imported_transactions(client, "TESCO STORES")
     set_provider_values(db_session, "vertex", {"api_key": "AQ.good"})
-    set_task(db_session, "categorise", "vertex", "gemini-2.5-flash")
+    use_model(db_session, "categorise", "vertex", "gemini-2.5-flash")
     answer = {
         "categorisations": [{"transaction_id": tesco, "account_full_path": "Expenses:Groceries"}]
     }

@@ -2,17 +2,16 @@
 where exact matching falls short: a card tap and a statement line, two imported transactions,
 or the two sides of a transfer.
 
-Jev answers one Noul (yes/no) question per pair; LLMs return a probability per pair. Callers
-act only on pairs at or above MIN_PROBABILITY."""
+A decision model answers one yes/no question per pair; LLMs return a probability per pair.
+Callers act only on pairs at or above MIN_PROBABILITY."""
 
 import json
 import time
 
 from sqlalchemy.orm import Session
 
-from pennychest.ai.config import get_task
 from pennychest.ai.models import AIRequestLog
-from pennychest.ai.providers import Provider, ProviderError, TypeSafeProvider, resolve_task
+from pennychest.ai.providers import DecisionProvider, Provider, ProviderError, resolve_task
 
 MIN_PROBABILITY = 0.8
 BATCH_SIZE = 40
@@ -23,12 +22,7 @@ _SYSTEM = (
 )
 
 
-def matching_enabled(db: Session) -> bool:
-    provider_id, model = get_task(db, "matching")
-    return bool(provider_id and model)
-
-
-def _with_jev(provider: TypeSafeProvider, cfg, model, question, pairs):
+def _with_decision_model(provider: DecisionProvider, cfg, model, question, pairs):
     """`question` is worded with `{a}` and `{b}` standing for the two records."""
     probabilities, requests, responses = [], [], []
     for start in range(0, len(pairs), BATCH_SIZE):
@@ -102,8 +96,8 @@ def ask_pairs(
     started = time.monotonic()
     request = response = error = None
     try:
-        if isinstance(provider, TypeSafeProvider):
-            result, request, response = _with_jev(provider, cfg, model, question, pairs)
+        if isinstance(provider, DecisionProvider):
+            result, request, response = _with_decision_model(provider, cfg, model, question, pairs)
         else:
             result, request, response = _with_llm(provider, cfg, model, question, pairs)
     except ProviderError as e:

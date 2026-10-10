@@ -192,6 +192,8 @@ export interface ImportBatchDetail {
   imported_at: string;
   transaction_count: number;
   categorised_count: number;
+  // When the matching model last looked for duplicates and transfers in it
+  matched_at: string | null;
 }
 
 export interface ImportReview {
@@ -376,6 +378,12 @@ export interface AccountReview {
 // Imports
 export const importsApi = {
   listImporters: () => request<ImporterInfo[]>("/imports/importers"),
+  // Ask the matching model about the import's duplicates, transfers and card taps
+  match: (batchId: number) =>
+    request<{ duplicates: number; transfers: number; taps: number }>(
+      `/imports/batches/${batchId}/match`,
+      { method: "POST" },
+    ),
   detect: (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -485,10 +493,17 @@ export interface AiModel {
   label: string;
 }
 
+// A language model writes text and can do anything; a decision model (like Jev) picks from
+// fixed answers with a confidence, and is fast and cheap.
+export type AiKind = "llm" | "decision";
+
+// "automatic" runs on new data as it arrives; "on_demand" when you press a button
+export type AiMode = "automatic" | "on_demand";
+
 export interface AiProvider {
   id: string;
   label: string;
-  tasks: AiTask[];
+  kind: AiKind;
   configured: boolean;
   // Why the saved credentials were rejected, the last time they were tried
   problem: string | null;
@@ -501,18 +516,30 @@ export type ChatScope = "organise" | "transactions";
 
 export interface AiTaskConfig {
   label: string;
+  // The kinds of model it can use, and the one it does
+  kinds: AiKind[];
+  kind: AiKind;
+  enabled: boolean;
+  // Null for tasks without the choice (rules, chat and checking chat's actions)
+  mode: AiMode | null;
+  // The model it would use: null when it's off or its kind of model isn't chosen
   provider: string | null;
   model: string | null;
   ready: boolean;
   problem: string | null;
   scopes?: ChatScope[];
-  // Runs by itself on new data (like each card tap) rather than when you ask
-  automatic: boolean;
-  auto?: boolean; // categorise only: run straight after each import
+}
+
+export interface AiModelChoice {
+  provider: string | null;
+  model: string | null;
+  ready: boolean;
+  problem: string | null;
 }
 
 export interface AiConfig {
   providers: AiProvider[];
+  models: Record<AiKind, AiModelChoice>;
   tasks: Record<AiTask, AiTaskConfig>;
 }
 
@@ -578,15 +605,17 @@ export const aiApi = {
   learnedStatus: () => request<LearnedStatus>("/ai/learned"),
   setLearned: (enabled: boolean) =>
     request<void>("/ai/learned", { method: "PUT", body: JSON.stringify({ enabled }) }),
-  setAutoCategorise: (enabled: boolean) =>
-    request<void>("/ai/categorise/auto", { method: "PUT", body: JSON.stringify({ enabled }) }),
   setChatScopes: (scopes: ChatScope[]) =>
     request<void>("/ai/chat/scopes", { method: "PUT", body: JSON.stringify({ scopes }) }),
-  chooseModel: (task: AiTask, provider: string | null, model: string | null) =>
-    request<void>(`/ai/tasks/${task}`, {
+  chooseModel: (kind: AiKind, provider: string | null, model: string | null) =>
+    request<void>(`/ai/models/${kind}`, {
       method: "PUT",
       body: JSON.stringify({ provider, model }),
     }),
+  updateTask: (task: AiTask, settings: { enabled?: boolean; kind?: AiKind; mode?: AiMode }) =>
+    request<void>(`/ai/tasks/${task}`, { method: "PUT", body: JSON.stringify(settings) }),
+  insightsBatch: (batchId: number) =>
+    request<{ ok: boolean }>(`/ai/insights/batch/${batchId}`, { method: "POST" }),
   categoriseBatch: (batchId: number) =>
     request<AiCategoriseResult>(`/ai/categorise/batch/${batchId}`, { method: "POST" }),
   categoriseAll: () =>
@@ -638,6 +667,8 @@ export const tapsApi = {
   restore: (id: number) => request<CardTap>(`/taps/${id}/restore`, { method: "POST" }),
   delete: (id: number) => request<void>(`/taps/${id}`, { method: "DELETE" }),
   reconcile: () => request<{ reconciled: number }>("/taps/reconcile", { method: "POST" }),
+  // Ask the card taps model for a category now
+  categorise: (id: number) => request<CardTap>(`/taps/${id}/categorise`, { method: "POST" }),
   cards: () => request<WalletCard[]>("/taps/cards"),
   pairCard: (cardName: string, accountId: number | null) =>
     request<WalletCard>("/taps/cards", {

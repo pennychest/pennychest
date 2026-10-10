@@ -5,9 +5,10 @@ import httpx
 import pytest
 
 from pennychest.ai import providers
-from pennychest.ai.config import set_provider_values, set_task
+from pennychest.ai.config import set_provider_values
 from pennychest.core.config import settings
 from pennychest.taps import service as tap_service
+from tests.conftest import use_model
 from tests.test_taps import AUTH, _setup, _statement_line, api_token  # noqa: F401
 
 
@@ -41,7 +42,7 @@ def jev(db_session, monkeypatch):
     fake = FakeJev()
     monkeypatch.setattr(providers, "http_transport", httpx.MockTransport(fake.handler))
     set_provider_values(db_session, "typesafe", {"api_key": "ts-1"})
-    set_task(db_session, "matching", "typesafe", "jev-latest")
+    use_model(db_session, "matching", "typesafe", "jev-latest")
     return fake
 
 
@@ -285,4 +286,31 @@ def test_without_the_model_taps_fall_back_to_the_closest_date(client, jev_off):
     client.post("/api/taps/reconcile")
     [tap] = client.get("/api/taps", params={"status": "reconciled"}).json()
     assert tap["transaction_id"] == bean["id"]
+    assert jev_off.requests == []
+
+
+def test_on_demand_matching_waits_for_the_button(client, accounts, jev, db_session):
+    use_model(db_session, "matching", "typesafe", "jev-latest", mode="on_demand")
+    jev.judge = lambda a, b: 0.95 if "TESCO" in a["description"].upper() else 0.1
+    current = accounts["Assets:Current"]
+    first = _import(client, current, [("20/09/2026", "TESCO STORES 2231", "-12.50")], "a.csv")
+    [second] = _import(client, current, [("22/09/2026", "Tesco Stores London", "-12.50")], "b.csv")
+    assert second["duplicate_of"] is None
+    assert jev.requests == []
+
+    batch_id = max(b["id"] for b in client.get("/api/imports/batches").json())
+    assert client.get(f"/api/imports/batches/{batch_id}").json()["batch"]["matched_at"] is None
+    response = client.post(f"/api/imports/batches/{batch_id}/match")
+    assert response.json() == {"duplicates": 1, "transfers": 0, "taps": 0}
+
+    review = client.get(f"/api/imports/batches/{batch_id}").json()
+    assert review["transactions"][0]["duplicate_of"]["transaction_id"] == first[0]["id"]
+    assert review["batch"]["matched_at"] is not None
+
+
+def test_matching_on_demand_needs_the_task_on(client, accounts, jev_off):
+    _import(client, accounts["Assets:Current"], [("20/09/2026", "TFL", "-3.10")], "a.csv")
+    batch_id = max(b["id"] for b in client.get("/api/imports/batches").json())
+    response = client.post(f"/api/imports/batches/{batch_id}/match")
+    assert response.status_code == 400
     assert jev_off.requests == []

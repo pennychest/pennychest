@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Nfc, CreditCard, EyeOff, RefreshCw, RotateCcw, Link2, ChevronLeft, Sparkles, GraduationCap, Trash2 } from "lucide-react";
 import {
+  aiApi,
   tapsApi,
   accountsApi,
   type Account,
@@ -62,6 +63,10 @@ export function TapsPage() {
   const restoreMutation = useMutation({ mutationFn: tapsApi.restore, onSuccess: invalidate });
   const deleteMutation = useMutation({ mutationFn: tapsApi.delete, onSuccess: invalidate });
   const reconcileMutation = useMutation({ mutationFn: tapsApi.reconcile, onSuccess: invalidate });
+  const suggestMutation = useMutation({ mutationFn: tapsApi.categorise, onSuccess: invalidate });
+  const { data: aiConfig } = useQuery({ queryKey: ["ai-config"], queryFn: aiApi.config });
+  // Taps are only categorised as they arrive when that's switched on; otherwise ask here
+  const canSuggest = aiConfig?.tasks.taps.ready ?? false;
   const pairMutation = useMutation({
     mutationFn: ({ cardName, accountId }: { cardName: string; accountId: number | null }) =>
       tapsApi.pairCard(cardName, accountId),
@@ -181,6 +186,20 @@ export function TapsPage() {
             <TapRow
               key={tap.id}
               tap={tap}
+              onSuggest={
+                canSuggest && tap.status === "unmatched" && !tap.suggested_account_full_path
+                  ? () => suggestMutation.mutate(tap.id)
+                  : undefined
+              }
+              suggesting={suggestMutation.isPending && suggestMutation.variables === tap.id}
+              suggestError={
+                suggestMutation.variables !== tap.id
+                  ? undefined
+                  : suggestMutation.error?.message ??
+                    (suggestMutation.data && !suggestMutation.data.suggested_account_full_path
+                      ? "AI wasn't sure enough to suggest one."
+                      : undefined)
+              }
               onDismiss={() => dismissMutation.mutate(tap.id)}
               onRestore={() => restoreMutation.mutate(tap.id)}
               onDelete={() => {
@@ -258,11 +277,18 @@ function CardPairingRow({
 
 function TapRow({
   tap,
+  onSuggest,
+  suggesting,
+  suggestError,
   onDismiss,
   onRestore,
   onDelete,
 }: {
   tap: CardTap;
+  // Ask AI for a category; only given when it can
+  onSuggest?: () => void;
+  suggesting: boolean;
+  suggestError?: string;
   onDismiss: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -305,6 +331,18 @@ function TapRow({
             </Badge>
           </div>
         )}
+        {onSuggest && (
+          <button
+            type="button"
+            className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+            onClick={onSuggest}
+            disabled={suggesting}
+          >
+            <Sparkles className="h-3 w-3" />
+            {suggesting ? "Suggesting…" : "Suggest a category"}
+          </button>
+        )}
+        {suggestError && <p className="text-xs text-muted-foreground mt-1">{suggestError}</p>}
         <div className="text-sm text-muted-foreground flex flex-wrap gap-x-3 mt-0.5">
           <span>{formatDate(tap.tapped_on)}</span>
           {tap.card_name && (
