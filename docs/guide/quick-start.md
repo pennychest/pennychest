@@ -48,6 +48,11 @@ and open `https://my-pennychest.fly.dev`.
 !!! danger
     Until a password is set, anyone who reaches PennyChest can choose one. See [Signing in](signing-in.md).
 
+## Next steps
+
+- **Set up a decision model.** We strongly recommend a decision model such as Jev: it categorises each import quickly and cheaply, and only when it's sure. See [AI integration](ai-integration.md#models).
+- **Set up your spending categories.** Choose a language model and ask the chat, or connect your own AI assistant through [MCP](mcp.md), to look at your transactions and set up categories that suit you. Let it change categories under **What chat may change**, or when you connect the assistant.
+
 ## Anywhere else
 
 Anything that runs Docker can host PennyChest: keep `/data` on a persistent volume, or point it at [PostgreSQL](installation.md#postgresql).
