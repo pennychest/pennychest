@@ -33,6 +33,7 @@ nav:
       - Deploying to Fly.io: guide/deploy-fly.md
       - Plugins: guide/plugins.md
       - Signing in: guide/signing-in.md
+      - Importing statements: guide/importing.md
       - Categorisation: guide/categorisation.md
       - Card taps: guide/card-taps.md
       - AI integration: guide/ai-integration.md
