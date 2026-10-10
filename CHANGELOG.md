@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.2.0 (2026-10-10)
+
+### Added
+
+- ✨ Install plugins from Settings, from the official repository or ones you add (#2)
+
 ## v0.1.1 (2026-10-04)
 
 ### Changed
