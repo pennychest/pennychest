@@ -978,3 +978,45 @@ export const exportApi = {
   databaseUrl: `${BASE_URL}/export/database`,
   exporterUrl: (name: string) => `${BASE_URL}/export/${encodeURIComponent(name)}`,
 };
+
+// Plugins
+export interface RepositoryPlugin {
+  package: string;
+  name: string;
+  description: string;
+  // The version the repository offers
+  version: string;
+  installed_version: string | null;
+  // Built into the image, so it can't be removed here
+  built_in: boolean;
+}
+
+export interface PluginRepository {
+  url: string;
+  name: string;
+  official: boolean;
+  error: string | null;
+  plugins: RepositoryPlugin[];
+}
+
+export interface PluginsInfo {
+  repositories: PluginRepository[];
+  // Installed from a repository that's since been removed, or can't be read
+  other_installed: { package: string; version: string }[];
+  can_add_repositories: boolean;
+}
+
+export const pluginsApi = {
+  list: () => request<PluginsInfo>("/plugins"),
+  addRepository: (url: string) =>
+    request<void>("/plugins/repositories", { method: "POST", body: JSON.stringify({ url }) }),
+  removeRepository: (url: string) =>
+    request<void>(`/plugins/repositories?url=${encodeURIComponent(url)}`, { method: "DELETE" }),
+  install: (repository: string, pkg: string) =>
+    request<void>("/plugins/install", {
+      method: "POST",
+      body: JSON.stringify({ repository, package: pkg }),
+    }),
+  uninstall: (pkg: string) =>
+    request<void>("/plugins/uninstall", { method: "POST", body: JSON.stringify({ package: pkg }) }),
+};

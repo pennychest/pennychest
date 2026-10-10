@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { BookOpen, ShoppingBag, TrendingUp, ChevronRight, ChevronLeft, Bot, Check, KeyRound, Nfc, Copy, Bug, ScrollText, LogOut, History, Plug, Download } from "lucide-react";
+import { BookOpen, ShoppingBag, TrendingUp, ChevronRight, ChevronLeft, Bot, Check, KeyRound, Nfc, Copy, Bug, ScrollText, LogOut, History, Plug, Download, Puzzle } from "lucide-react";
 import { accountsApi, authApi, tapsApi } from "../api/client";
 import { AiSettingsSection } from "../components/AiSettingsSection";
 import { ChangesSection } from "../components/ChangesSection";
 import { McpSection } from "../components/McpSection";
 import { ExportSection } from "../components/ExportSection";
+import { PluginsSection } from "../components/PluginsSection";
 import { useSignOut } from "../lib/auth";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { CategoryGrid, buildChildMap } from "./AccountsPage";
 
-type Section = "spending" | "income" | "ai" | "changes" | "mcp" | "password" | "taps" | "export" | "debug" | null;
+type Section = "spending" | "income" | "ai" | "changes" | "mcp" | "password" | "taps" | "plugins" | "export" | "debug" | null;
 
 // iCloud link to the shared "PennyChest Tap" shortcut; its import questions ask for the
 // address and token shown in Settings.
@@ -114,6 +115,20 @@ export function SettingsPage() {
           <h1 className="text-3xl font-bold">AI agents (MCP)</h1>
         </div>
         <McpSection />
+      </div>
+    );
+  }
+
+  if (activeSection === "plugins") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => setActiveSection(null)}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-3xl font-bold">Plugins</h1>
+        </div>
+        <PluginsSection />
       </div>
     );
   }
@@ -252,6 +267,17 @@ export function SettingsPage() {
         <CardContent className="flex items-center gap-3 py-4">
           <KeyRound className="h-5 w-5 text-muted-foreground" />
           <span className="font-medium">Password</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
+        </CardContent>
+      </Card>
+
+      <Card
+        className="hover:bg-accent transition-colors cursor-pointer"
+        onClick={() => setActiveSection("plugins")}
+      >
+        <CardContent className="flex items-center gap-3 py-4">
+          <Puzzle className="h-5 w-5 text-muted-foreground" />
+          <span className="font-medium">Plugins</span>
           <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
         </CardContent>
       </Card>

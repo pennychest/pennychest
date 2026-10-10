@@ -24,6 +24,8 @@ from pennychest.export.routes import router as export_router
 from pennychest.imports.routes import router as imports_router
 from pennychest.mcp.oauth import router as oauth_router
 from pennychest.mcp.server import router as mcp_router
+from pennychest.plugins import installer as plugin_installer
+from pennychest.plugins.routes import router as plugins_router
 from pennychest.mcp.tokens import router as mcp_tokens_router
 from pennychest.reports.routes import router as reports_router
 from pennychest.rules.routes import router as rules_router
@@ -53,9 +55,11 @@ from pennychest.mcp.models import AccessToken, OAuthClient, OAuthCode  # noqa: F
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    plugin_installer.activate()
     db = SessionLocal()
     try:
         seed_lookup_tables(db)
+        plugin_installer.restore(db)
     finally:
         db.close()
     yield
@@ -96,6 +100,7 @@ app.include_router(actions_router)
 app.include_router(chat_router)
 app.include_router(changes_router)
 app.include_router(export_router)
+app.include_router(plugins_router)
 app.include_router(mcp_tokens_router)
 # Outside /api: agents sign in with an access token rather than a session.
 app.include_router(mcp_router)

@@ -7,6 +7,7 @@ TEST_DATABASE_URL = os.environ.get(
 )
 # The app's startup hook opens its own session, so it must see the test database too.
 os.environ["PENNYCHEST_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["PENNYCHEST_PLUGIN_DIR"] = f"{tempfile.mkdtemp()}/plugins"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
