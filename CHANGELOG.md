@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.3.0 (2026-10-10)
+
+### Added
+
+- ✨ Split AI settings into a decision model and a language model, with each task on demand or automatic (#3)
+
 ## v0.2.0 (2026-10-10)
 
 ### Added

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pennychest"
-version = "0.2.0"
+version = "0.3.0"
 description = "Self-hosted personal finance with real double-entry accounting"
 requires-python = ">=3.11"
 license = "MIT"
