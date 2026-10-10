@@ -238,6 +238,36 @@ export interface StatementDetection {
   closing_balance: string | null;
 }
 
+// What a CSV column can hold
+export type CsvField = "date" | "description" | "amount" | "money_out" | "money_in";
+
+// Which column (counting from 0) holds each field
+export type CsvColumns = Partial<Record<CsvField, number>>;
+
+export interface CsvColumnSuggestion {
+  column: number | null;
+  // From a saved template, the column's name, or the model
+  source: "template" | "name" | "ai";
+  // Only decision models report one
+  confidence: number | null;
+}
+
+export interface CsvPreview {
+  headers: string[];
+  rows: string[][];
+  template: { id: number; name: string } | null;
+  columns: Partial<Record<CsvField, CsvColumnSuggestion>>;
+  ai_available: boolean;
+  ai_error: string | null;
+}
+
+export interface CsvTemplate {
+  id: number;
+  name: string;
+  headers: string[];
+  columns: CsvColumns;
+}
+
 export interface DetectResult {
   importer: string;
   statement: StatementDetection | null;
@@ -389,13 +419,28 @@ export const importsApi = {
     formData.append("file", file);
     return requestFormData<DetectResult>("/imports/detect", formData);
   },
-  upload: (file: File, accountId: number, importerName = "csv") => {
+  upload: (file: File, accountId: number, importerName = "csv", csvColumns?: CsvColumns) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("account_id", String(accountId));
     formData.append("importer_name", importerName);
+    if (csvColumns) formData.append("csv_columns", JSON.stringify(csvColumns));
     return requestFormData<ImportUploadResult>("/imports/upload", formData);
   },
+  // A CSV's headers, first rows and suggested columns; `ai` asks the model even if it runs on demand
+  csvPreview: (file: File, ai = false) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("ai", String(ai));
+    return requestFormData<CsvPreview>("/imports/csv/preview", formData);
+  },
+  csvTemplates: () => request<CsvTemplate[]>("/imports/csv/templates"),
+  saveCsvTemplate: (name: string, headers: string[], columns: CsvColumns) =>
+    request<CsvTemplate>("/imports/csv/templates", {
+      method: "POST",
+      body: JSON.stringify({ name, headers, columns }),
+    }),
+  deleteCsvTemplate: (id: number) => request<void>(`/imports/csv/templates/${id}`, { method: "DELETE" }),
   listBatches: () => request<ImportBatch[]>("/imports/batches"),
   getBatch: (batchId: number) => request<ImportReview>(`/imports/batches/${batchId}`),
   confirmAll: (batchId: number) =>

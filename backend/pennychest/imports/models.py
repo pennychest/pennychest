@@ -2,6 +2,7 @@ from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Numeric, Str
 from sqlalchemy.orm import relationship
 
 from pennychest.accounts.models import Base
+from pennychest.core.types import JSONType
 
 
 class ImportBatch(Base):
@@ -41,3 +42,18 @@ class RawImportRow(Base):
 
     batch = relationship("ImportBatch", back_populates="raw_rows")
     transaction = relationship("Transaction")
+
+
+class CsvTemplate(Base):
+    """A saved column mapping for CSV files laid out one way, applied to later files with the
+    same headers."""
+
+    __tablename__ = "csv_templates"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    # The file's headers, normalised (see csv_mapping.header_key)
+    header_key = Column(String, nullable=False, index=True)
+    # {field: column index}, e.g. {"date": 0, "description": 2, "amount": 4}
+    columns = Column(JSONType, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

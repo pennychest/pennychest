@@ -1,7 +1,8 @@
 """CSV importer for bank statement files.
 
-Supports common UK bank statement CSV formats with auto-detection of columns.
-"""
+Recognises common UK bank statement layouts by their column names. Others are imported with a
+column mapping: chosen by the user, suggested by a model, or saved as a template (see
+csv_mapping)."""
 
 import csv
 import io
@@ -72,6 +73,45 @@ def _parse_amount(value: str) -> Decimal:
     return Decimal(value)
 
 
+# What each column can hold, in the order they're shown
+FIELDS = {
+    "date": "date",
+    "description": "description",
+    "amount": "amount",
+    "money_out": "money out",
+    "money_in": "money in",
+}
+
+
+def read_csv(file_content: bytes) -> tuple[list[str], list[list[str]]]:
+    """The header row and the data rows."""
+    text = file_content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows or not rows[0]:
+        raise ValueError("CSV file is empty or has no header row")
+    return rows[0], rows[1:]
+
+
+def columns_by_name(headers: list[str]) -> dict[str, int]:
+    """The columns whose header names a field, e.g. "Paid out" for money out."""
+    found = {
+        "date": _find_column(headers, DATE_COLUMNS),
+        "description": _find_column(headers, DESCRIPTION_COLUMNS),
+        "amount": _find_column(headers, AMOUNT_COLUMNS),
+        "money_out": _find_column(headers, DEBIT_COLUMNS),
+        "money_in": _find_column(headers, CREDIT_COLUMNS),
+    }
+    return {field: column for field, column in found.items() if column is not None}
+
+
+def missing_fields(columns: dict[str, int]) -> list[str]:
+    """The fields a mapping still needs: a date, a description and some amount."""
+    missing = [FIELDS[f] for f in ("date", "description") if columns.get(f) is None]
+    if all(columns.get(f) is None for f in ("amount", "money_out", "money_in")):
+        missing.append("amount")
+    return missing
+
+
 class CsvImporter(BaseImporter):
     """Generic CSV importer for bank statements.
 
@@ -105,37 +145,31 @@ class CsvImporter(BaseImporter):
             return False
 
     def parse(self, file_content: bytes) -> list[ImportedRow]:
-        text = file_content.decode("utf-8-sig")
-        reader = csv.reader(io.StringIO(text))
-
-        headers = next(reader, None)
-        if not headers:
-            raise ValueError("CSV file is empty or has no header row")
-
-        date_col = _find_column(headers, DATE_COLUMNS)
-        desc_col = _find_column(headers, DESCRIPTION_COLUMNS)
-        amount_col = _find_column(headers, AMOUNT_COLUMNS)
-        debit_col = _find_column(headers, DEBIT_COLUMNS)
-        credit_col = _find_column(headers, CREDIT_COLUMNS)
-
-        if date_col is None:
+        headers, _ = read_csv(file_content)
+        columns = columns_by_name(headers)
+        missing = missing_fields(columns)
+        if missing:
             raise ValueError(
-                f"Could not find date column. Headers: {headers}. "
-                f"Expected one of: {sorted(DATE_COLUMNS)}"
+                f"Couldn't tell which columns hold the {' and '.join(missing)}. "
+                f"Headers: {headers}."
             )
-        if desc_col is None:
-            raise ValueError(
-                f"Could not find description column. Headers: {headers}. "
-                f"Expected one of: {sorted(DESCRIPTION_COLUMNS)}"
-            )
-        if amount_col is None and debit_col is None:
-            raise ValueError(
-                f"Could not find amount column. Headers: {headers}. "
-                f"Expected one of: {sorted(AMOUNT_COLUMNS | DEBIT_COLUMNS)}"
-            )
+        return self.parse_mapped(file_content, columns)
+
+    def parse_mapped(self, file_content: bytes, columns: dict[str, int]) -> list[ImportedRow]:
+        """Parse with `columns` saying which column (counting from 0) holds each field:
+        "date", "description", and "amount" or one or both of "money_out" and "money_in"."""
+        missing = missing_fields(columns)
+        if missing:
+            raise ValueError(f"Choose the columns for the {' and '.join(missing)}.")
+        _, data = read_csv(file_content)
+        date_col = columns["date"]
+        desc_col = columns["description"]
+        amount_col = columns.get("amount")
+        debit_col = columns.get("money_out")
+        credit_col = columns.get("money_in")
 
         rows: list[ImportedRow] = []
-        for line_num, row in enumerate(reader, start=2):
+        for line_num, row in enumerate(data, start=2):
             if not row or all(cell.strip() == "" for cell in row):
                 continue
 
@@ -160,8 +194,9 @@ class CsvImporter(BaseImporter):
                     credit = (
                         _parse_amount(row[credit_col]) if credit_col is not None else Decimal("0")
                     )
-                    # Debits are outgoing (negative), credits are incoming (positive)
-                    amount = credit - debit
+                    # Money out is always outgoing, whether the bank writes it as 12.50
+                    # or -12.50
+                    amount = credit - abs(debit)
             except (InvalidOperation, IndexError):
                 continue
 

@@ -17,6 +17,7 @@ TASKS = {
     "check_actions": "Checking chat actions",
     "matching": "Matching taps, duplicates and transfers",
     "insights": "Flagging subscriptions and unusual charges",
+    "csv_columns": "Reading CSV columns",
 }
 
 # The two kinds of model. A language model (LLM) writes text and can do anything; a decision
@@ -34,13 +35,14 @@ TASK_KINDS = {
     "check_actions": (DECISION, LLM),
     "matching": (DECISION, LLM),
     "insights": (DECISION, LLM),
+    "csv_columns": (DECISION, LLM),
 }
 
 # Tasks that can run by themselves whenever new data arrives, or only when the user asks.
 # Rules only run when asked; chat and checking chat's actions run whenever the chat does.
 AUTOMATIC = "automatic"
 ON_DEMAND = "on_demand"
-MODE_TASKS = {"taps", "categorise", "matching", "insights"}
+MODE_TASKS = {"taps", "categorise", "matching", "insights", "csv_columns"}
 
 
 def _get(db: Session, key: str) -> str | None:

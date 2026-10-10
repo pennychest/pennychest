@@ -55,13 +55,14 @@ Under **Tasks**, each task can be turned on or off. Tasks that can use either ki
 | **Categorising card taps** | Suggests a category for each card tap. Your rules and your history come first. | Either |
 | **Matching taps, duplicates and transfers** | Picks the right statement line for a card tap when several fit, links transfers between your accounts, and flags transactions you already have. It acts only when it's at least 80% sure. | Either |
 | **Flagging subscriptions and unusual charges** | Marks which regular payments are subscriptions or bills, and flags charges that are unusual for the merchant or category. Chat uses both. | Either |
+| **Reading CSV columns** | Works out which column of an unfamiliar [CSV file](importing.md#csv-files) holds the date, description and amounts. | Either |
 | **Suggesting rules** | Proposes categorisation rules from your transactions, for you to accept or not. | Language model |
 | **Chat** | Answers questions about your finances and, if you allow it, makes changes for you. | Language model |
 | **Checking chat actions** | Before chat makes a change, checks that it's what you asked for. | Either |
 
 ### Automatically or when you ask
 
-The first four tasks can run **Automatically**, whenever new data arrives, or only **When I ask**:
+These tasks can run **Automatically**, whenever new data arrives, or only **When I ask**:
 
 | Task | When you ask, run it from |
 |---|---|
@@ -69,6 +70,7 @@ The first four tasks can run **Automatically**, whenever new data arrives, or on
 | Categorising card taps | the **Card taps** page, **Suggest a category** on a tap |
 | Matching | an import's review page, **Find matches with AI**, or **Reconcile** on the **Card taps** page |
 | Subscriptions and unusual charges | an import's review page, **Check for subscriptions** |
+| Reading CSV columns | the file's **Columns** card on the **Import** page, **Suggest with AI** |
 
 Unless you choose, tasks run automatically with a decision model, and when you ask with a language model, as a language model on every import can add up. Suggesting rules only ever runs when you ask; chat and checking its actions run whenever you chat.
 
@@ -108,8 +110,9 @@ Only what each task needs:
 | Task | What's sent |
 |---|---|
 | Categorising | Transaction descriptions, or a card tap's merchant and amount, and the names of your accounts and categories |
+| Reading CSV columns | The file's headers and first five rows |
 | Matching | The pairs of records being compared |
 | Insights | Merchants' recent charges, and the charges being scored |
 | Chat | Your messages and the results of the actions chat runs, which can include any of your data that it looks up |
 
-Statement files and the bank identifiers stored with your accounts (sort codes, account and card numbers) aren't sent. Account names are, so leave numbers out of them if that matters to you. If you'd rather nothing left your network, use Ollama, or rely on rules and the learned model alone.
+Whole statement files and the bank identifiers stored with your accounts (sort codes, account and card numbers) aren't sent. Account names are, so leave numbers out of them if that matters to you. If you'd rather nothing left your network, use Ollama, or rely on rules and the learned model alone.
