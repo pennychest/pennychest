@@ -29,8 +29,8 @@ theme:
 nav:
   - Home: index.md
   - Guide:
+      - Quick start: guide/quick-start.md
       - Installation: guide/installation.md
-      - Deploying to Fly.io: guide/deploy-fly.md
       - Plugins: guide/plugins.md
       - Signing in: guide/signing-in.md
       - Importing statements: guide/importing.md
