@@ -1,0 +1,18 @@
+# One-click deploy to Render: the "Deploy to Render" button in the README and
+# docs reads this file. See docs/guide/quick-start.md.
+services:
+  - type: web
+    name: pennychest
+    runtime: image
+    image:
+      url: ghcr.io/pennychest/pennychest:latest
+    # Disks need a paid plan; starter is the smallest.
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /api/health
+    # SQLite lives here. A disk also keeps the service to one instance, which
+    # SQLite needs.
+    disk:
+      name: pennychest-data
+      mountPath: /data
+      sizeGB: 1

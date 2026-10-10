@@ -5,7 +5,7 @@ Statements arrive weeks after you spend. Card taps close that gap: each time you
 ## What you need
 
 - An iPhone with your cards in Apple Wallet.
-- A PennyChest your phone can reach wherever you are. In practice that means one on the internet over HTTPS; see [Deploying to Fly.io](deploy-fly.md).
+- A PennyChest your phone can reach wherever you are. In practice that means one on the internet over HTTPS; see [Quick start](quick-start.md).
 
 ## Setting it up
 
