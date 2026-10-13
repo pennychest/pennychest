@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Python API + compiled frontend static files
-FROM python:3.12-slim
+FROM python:3.15-slim
 WORKDIR /app
 COPY backend/pyproject.toml .
 RUN pip install --no-cache-dir -e ".[dev]" 2>/dev/null || pip install --no-cache-dir .

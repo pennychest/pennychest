@@ -94,7 +94,7 @@ Raising the threshold makes fewer mistakes, but leaves more lines for you. Penny
 
 ```bash
 docker cp <container>:/data/pennychest.db .
-docker run --rm -v "$PWD/backend/tools:/w" -v "$PWD/pennychest.db:/data.db:ro" python:3.12-slim sh -c \
+docker run --rm -v "$PWD/backend/tools:/w" -v "$PWD/pennychest.db:/data.db:ro" python:3.15-slim sh -c \
   "pip install -q scikit-learn && python /w/evaluate_categorisers.py --db /data.db"
 ```
 

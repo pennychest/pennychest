@@ -24,7 +24,7 @@ regression, linear SVM, and cosine similarity (nearest neighbour, 5 nearest, cat
 all on character n-grams of the cleaned description.
 
 Run it in a throwaway container so nothing is installed on the host:
-  docker run --rm -v "$PWD:/w" python:3.12-slim sh -c \\
+  docker run --rm -v "$PWD:/w" python:3.15-slim sh -c \\
     "pip install -q scikit-learn && python /w/evaluate_categorisers.py --db /w/pennychest.db"
 """
 
