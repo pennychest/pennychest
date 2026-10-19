@@ -1,11 +1,10 @@
 //! Plugins written with the SDK, driven by PennyChest's side of the protocol as a mock host:
-//! the example QIF importer, an exporter, and the Python example run as a real process.
+//! the example QIF importer and an exporter.
 
 #[path = "../examples/qif/importer.rs"]
 mod qif;
 
 use std::io::{BufReader, PipeReader, PipeWriter, Write};
-use std::process::{Command, Stdio};
 use std::thread::JoinHandle;
 
 use pennychest_plugin::client::{Client, ClientError, Request};
@@ -248,40 +247,4 @@ fn a_plugin_that_stops_is_reported() {
         host.initialize().unwrap_err(),
         ClientError::Closed
     ));
-}
-
-#[test]
-fn a_plugin_in_another_language() {
-    let script = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/plugins/examples/tsv_importer.py"
-    );
-    let mut child = Command::new("python3")
-        .arg(script)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("python3 runs the Python example plugin");
-    let stdin = child.stdin.take().unwrap();
-    let stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut host = Client::new(stdout, stdin);
-
-    let handshake = host.initialize().unwrap();
-    assert_eq!(handshake.importers[0].name, "tsv");
-    let rows = host
-        .parse(
-            "tsv",
-            "2026-09-20\tTESCO STORES\t-12.50\n2026-09-21\tSALARY\t1500\n".as_bytes(),
-        )
-        .unwrap();
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].amount, "-12.50".parse::<Decimal>().unwrap());
-    assert_eq!(rows[1].line_number, Some(2));
-    let problem = host.parse("tsv", b"yesterday\tTESCO\n").unwrap_err();
-    assert_eq!(
-        problem.for_user("tsv"),
-        "Line 1: expected a date, description and amount."
-    );
-    host.shutdown().unwrap();
-    assert!(child.wait().unwrap().success());
 }

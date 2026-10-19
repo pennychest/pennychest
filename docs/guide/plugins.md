@@ -24,6 +24,6 @@ set `PENNYCHEST_ALLOW_PLUGIN_REPOSITORIES=false`.
 
 ## Making your own
 
-[The plugin protocol](../plugins/protocol.md) describes everything a plugin does, so you can write one from that page alone. In Rust, the `pennychest-plugin` crate's SDK does the protocol for you: implement an importer or an exporter, and call `serve()`. The protocol page has a complete example of each, an importer for QIF statements in Rust and one for tab-separated files in Python, and shows how to test a plugin by sending it requests by hand.
+[The plugin protocol](../plugins/protocol.md) describes everything a plugin does, so you can write one from that page alone. In Rust, the `pennychest-plugin` crate's SDK does the protocol for you: implement an importer or an exporter, and call `serve()`. The protocol page has a complete example, an importer for QIF statements, and shows how to test a plugin by sending it requests by hand.
 
 Each plugin comes with a `pennychest-plugin.toml` manifest saying what it is and how to run it. [Publishing a plugin](../plugins/protocol.md#publishing-a-plugin) covers making a repository others can install it from.

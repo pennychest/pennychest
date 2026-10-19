@@ -379,10 +379,6 @@ for WASI with `cargo build --example qif --target wasm32-wasip1`, or natively wi
 ## Writing a plugin in another language
 
 Read lines from stdin, answer each on stdout, and flush after each answer.
-[`examples/tsv_importer.py`](examples/tsv_importer.py) is a complete importer in Python using
-only the standard library. It shows the protocol rather than how to ship a plugin: the Docker
-image has no Python, so to install it there, compile it to WASI (with a tool such as
-`componentize-py` or `py2wasm`) or run PennyChest outside Docker with Python available.
 
 ## Testing a plugin
 
