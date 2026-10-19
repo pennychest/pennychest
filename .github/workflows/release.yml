@@ -39,6 +39,11 @@ jobs:
 
       - uses: astral-sh/setup-uv@v9.0.0
 
+      # For the bump's hook, which brings Cargo.lock into line with the new version offline.
+      # rustup on the runner installs the toolchain rust-toolchain.toml pins.
+      - name: Fetch the Rust dependencies
+        run: cargo fetch --locked
+
       - name: Bump the version if the commits warrant one
         id: bump
         env:

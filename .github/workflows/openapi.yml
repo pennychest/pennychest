@@ -1,0 +1,35 @@
+name: OpenAPI
+
+# The frontend's API types are generated from openapi.json, which the server's own tests keep
+# in step with the server (`cargo test` in CI fails when it's out of date). This checks the
+# last link: that frontend/src/api/schema.ts is what openapi.json generates. The frontend build
+# in CI then fails if the app no longer type-checks against it.
+
+on:
+  pull_request:
+    paths: [openapi.json, frontend/src/api/schema.ts, frontend/package.json, .github/workflows/openapi.yml]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - run: npm run api:types
+      - name: Check schema.ts is what openapi.json generates
+        run: |
+          if ! git diff --exit-code -- src/api/schema.ts; then
+            echo "::error file=frontend/src/api/schema.ts::Out of date with openapi.json. Run \`npm run api:types\` in frontend and commit it."
+            exit 1
+          fi

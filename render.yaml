@@ -1,5 +1,4 @@
-# One-click deploy to Render: the "Deploy to Render" button in the README and
-# docs reads this file. See docs/guide/quick-start.md.
+# One-click deploy to Render: the "Deploy to Render" button reads this file.
 services:
   - type: web
     name: pennychest
@@ -10,8 +9,8 @@ services:
     plan: starter
     region: frankfurt
     healthCheckPath: /api/health
-    # SQLite lives here. A disk also keeps the service to one instance, which
-    # SQLite needs.
+    # The database lives here. A disk also keeps the service to one instance, which SQLite
+    # needs.
     disk:
       name: pennychest-data
       mountPath: /data

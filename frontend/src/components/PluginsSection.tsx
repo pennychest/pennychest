@@ -66,11 +66,14 @@ export function PluginsSection() {
       return (
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Loader2 className="h-3 w-3 animate-spin" />
-          {installing ? "Installing… this can take a minute" : "Removing…"}
+          {installing ? "Installing…" : "Removing…"}
         </span>
       );
     }
     const doInstall = () => install.mutate({ repository: repo.url, pkg: plugin.package });
+    if (!plugin.installed_version && !plugin.available) {
+      return <span className="text-xs text-muted-foreground">Not available for this server</span>;
+    }
     if (!plugin.installed_version) {
       return (
         <Button size="sm" onClick={doInstall} disabled={busy}>
@@ -80,7 +83,7 @@ export function PluginsSection() {
     }
     return (
       <div className="flex gap-2">
-        {plugin.installed_version !== plugin.version && (
+        {plugin.installed_version !== plugin.version && plugin.available && (
           <Button size="sm" onClick={doInstall} disabled={busy}>
             Update to {plugin.version}
           </Button>
@@ -166,13 +169,36 @@ export function PluginsSection() {
         </Card>
       )}
 
+      {data.broken.length > 0 && (
+        <Card>
+          <CardContent className="pt-4 space-y-4">
+            <p className="font-medium">Not working</p>
+            {data.broken.map((plugin) => (
+              <div key={plugin.package} className="flex items-start gap-3 border-t pt-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm">{plugin.package}</p>
+                  <p className="text-xs text-destructive break-words">{plugin.problem}</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => remove(plugin.package, plugin.package)} disabled={busy}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {data.can_add_repositories && (
         <Card>
           <CardContent className="pt-4 space-y-3">
             <p className="font-medium">Add a repository</p>
             <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50/60 p-3 text-sm dark:bg-amber-950/30">
               <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600" />
-              <p>Plugins can run any code on your server and read all your data. Only add repositories you trust.</p>
+              <p>
+                Most plugins run in a sandbox, with no access to your files or the network beyond the statement or
+                export they're working on. Some run as programs on your server instead, and those can do anything
+                PennyChest can, including reading all your data. Only add repositories you trust.
+              </p>
             </div>
             <form
               className="flex gap-2"

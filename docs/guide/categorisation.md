@@ -90,12 +90,23 @@ Raising the threshold makes fewer mistakes, but leaves more lines for you. Penny
 
 ### Test it on your own data
 
-`backend/tools/evaluate_categorisers.py` runs these comparisons on your own database, or on a CSV. It only reads the data and changes nothing. Copy the database out of your container, then run the script from a checkout of this repository in a throwaway container, so nothing is installed on the host:
+The `pennychest-evaluate` tool runs the learned model's tests on your own database, or on a CSV: trained on your oldest 80% of transactions and tested on the newest 20%, then a cross-check that predicts every transaction from the others. It only reads the data and changes nothing.
+
+Copy the database out of your container, then run the tool from a checkout of this repository in a throwaway container, so nothing is installed on the host:
 
 ```bash
 docker cp <container>:/data/pennychest.db .
-docker run --rm -v "$PWD/backend/tools:/w" -v "$PWD/pennychest.db:/data.db:ro" python:3.12-slim sh -c \
-  "pip install -q scikit-learn && python /w/evaluate_categorisers.py --db /data.db"
+docker run --rm -v "$PWD:/src" -w /src rust:1.97 \
+  cargo run --release -p pennychest-evaluate -- --db pennychest.db
 ```
 
-Run it with `--help` to see the options, including which categories to trust and using a CSV instead of a database.
+Its options:
+
+| Option | What it does |
+|---|---|
+| `--db PATH` | Reads a PennyChest database |
+| `--csv PATH` | Reads a CSV of `description,category` rows, with an optional third `date` column, instead |
+| `--trust manual,rule,confirmed` | Which categories to learn from and test against: `manual` (yours), `rule` (your rules'), `confirmed` (any you've confirmed) and `ai` (AI-categorised, unconfirmed, which measures agreement with the AI rather than accuracy) |
+| `--train-fraction 0.8` | How much of the oldest history to train on in the first test |
+| `--folds 10` | Folds for the cross-check: `0` predicts each transaction from all the others |
+| `--skip-cross-check` | Runs only the first test |

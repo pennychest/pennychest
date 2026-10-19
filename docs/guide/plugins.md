@@ -1,49 +1,29 @@
 # Plugins
 
-Plugins add importers, for more banks' statements, and exporters, to other formats. PennyChest includes the CSV importer; the official plugins, such as the HSBC PDF statement importer and the Beancount exporter, are in [pennychest-plugins](https://github.com/pennychest/pennychest-plugins).
+Plugins add importers, for more banks' statements, and exporters, to other formats. PennyChest reads CSV files itself; plugins handle the rest, such as HSBC's PDF statements or exporting to Beancount.
 
-## Installing a plugin
+A plugin is a separate program that PennyChest runs and talks to over its standard input and output. That means:
 
-Go to **Settings → Plugins** and press **Install**. The plugin works straight away, without a restart. **Update** appears when there's a newer version, and **Remove** uninstalls it.
+- it can be written in any language
+- a plugin that crashes can't take PennyChest down with it
+- a plugin brings its own dependencies, which can't clash with PennyChest's
 
-Plugins are installed into `/data/plugins`, next to the database, so they survive restarts and updates. If that folder is lost, PennyChest reinstalls them on startup.
+## Installing plugins
 
-## Other repositories
+**Settings > Plugins** lists the plugins in the official repository,
+[pennychest-plugins](https://github.com/pennychest/pennychest-plugins), and in any
+others you've added. **Install** downloads one, checks it against the checksum its repository
+lists, and makes it available straight away: its importers appear on the import page, and its
+exporters on the export page. **Update** and **Remove** do what they say.
 
-Settings lists the plugins in the official repository. To install plugins from somewhere else, such as your own fork, go to **Settings → Plugins → Add a repository** and paste its link.
-
-!!! warning
-    A plugin can run any code on your server and read all your data. Only add repositories you trust.
-
-To offer only the official repository, set `PENNYCHEST_ALLOW_PLUGIN_REPOSITORIES=false`.
+Most plugins are WebAssembly modules, which PennyChest runs in a sandbox: they see the statement
+or ledger they're sent, and nothing else, not your files and not the network. Some run as
+ordinary programs on your server instead, and those can do anything PennyChest can. Add
+another repository only if you trust whoever runs it. To offer only the official repository,
+set `PENNYCHEST_ALLOW_PLUGIN_REPOSITORIES=false`.
 
 ## Making your own
 
-1. Fork [pennychest-plugins](https://github.com/pennychest/pennychest-plugins).
-2. Add a directory for your plugin, following `hsbc/` (an importer) or `beancount/` (an exporter).
-3. List it in the fork's `plugins.json`, and tag a release.
-4. Add your fork under **Settings → Plugins → Add a repository**, and install your plugin.
+[The plugin protocol](../plugins/protocol.md) describes everything a plugin does, so you can write one from that page alone. In Rust, the `pennychest-plugin` crate's SDK does the protocol for you: implement an importer or an exporter, and call `serve()`. The protocol page has a complete example of each, an importer for QIF statements in Rust and one for tab-separated files in Python, and shows how to test a plugin by sending it requests by hand.
 
-The [pennychest-plugins README](https://github.com/pennychest/pennychest-plugins#making-your-own) has the details. To share a plugin with everyone, open a pull request there.
-
-## Building plugins into the image
-
-To bake plugins into your own image instead, pass them as pip requirements when building from a checkout of this repository, pinned to a tag:
-
-```bash
-docker build \
-  --build-arg PENNYCHEST_PLUGINS="git+https://github.com/pennychest/pennychest-plugins@hsbc-v0.1.0#subdirectory=hsbc" \
-  -t pennychest .
-```
-
-Separate several plugins with spaces. Plugins built in show as *Built in* in Settings and can't be removed there.
-
-## Developing a plugin
-
-Clone pennychest-plugins next to this repository. The dev Compose setup mounts it at `/plugins`, so you can run a plugin from your working copy:
-
-```bash
-docker compose -f docker-compose.dev.yml exec api pip install -e /plugins/<name>
-```
-
-Then restart `api`.
+Each plugin comes with a `pennychest-plugin.toml` manifest saying what it is and how to run it. [Publishing a plugin](../plugins/protocol.md#publishing-a-plugin) covers making a repository others can install it from.

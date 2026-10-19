@@ -1,0 +1,43 @@
+[package]
+name = "pennychest-server"
+description = "PennyChest's web server: the API and the embedded frontend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "pennychest"
+path = "src/main.rs"
+
+[dependencies]
+chrono.workspace = true
+pennychest-core.workspace = true
+axum.workspace = true
+futures-util.workspace = true
+mime_guess.workspace = true
+rust-embed.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+utoipa.workspace = true
+
+[dev-dependencies]
+pennychest-plugin.workspace = true
+base64.workspace = true
+flate2.workspace = true
+hex.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

@@ -1,4 +1,12 @@
+import type { components } from "./schema";
+
 const BASE_URL = "/api";
+
+// Types generated from the server's OpenAPI description (openapi.json at the repository root,
+// by `npm run api:types`). Endpoints move onto these as the server describes them; the rest
+// below are still written by hand.
+type Schemas = components["schemas"];
+type ErrorBody = Schemas["ErrorBody"];
 
 // Fired when the server rejects a request because the session is missing or expired.
 export const SIGNED_OUT_EVENT = "pennychest:signed-out";
@@ -16,7 +24,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (response.status === 401 && path !== "/auth/login") {
       window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
     }
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error: ErrorBody = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `Request failed: ${response.status}`);
   }
 
@@ -37,7 +45,7 @@ async function requestFormData<T>(path: string, formData: FormData): Promise<T> 
     if (response.status === 401 && path !== "/auth/login") {
       window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
     }
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error: ErrorBody = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `Request failed: ${response.status}`);
   }
 
@@ -509,8 +517,10 @@ export const setupApi = {
   seedRules: () => request<{ rules_created: number }>("/setup/seed-rules", { method: "POST" }),
 };
 
+export type Health = Schemas["Health"];
+
 export const healthApi = {
-  check: () => request<{ status: string }>("/health"),
+  check: () => request<Health>("/health"),
 };
 
 // AI configuration
@@ -726,22 +736,27 @@ export const tapsApi = {
 };
 
 // Auth
-export interface AuthStatus {
-  setup_required: boolean;
-  authenticated: boolean;
+export type AuthStatus = Schemas["AuthStatus"];
+
+/** A request body, checked against the type the server describes for it. */
+function json<T>(body: T): string {
+  return JSON.stringify(body);
 }
 
 export const authApi = {
   status: () => request<AuthStatus>("/auth/status"),
   setup: (password: string) =>
-    request<void>("/auth/setup", { method: "POST", body: JSON.stringify({ password }) }),
+    request<void>("/auth/setup", { method: "POST", body: json<Schemas["PasswordRequest"]>({ password }) }),
   login: (password: string) =>
-    request<void>("/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
+    request<void>("/auth/login", { method: "POST", body: json<Schemas["PasswordRequest"]>({ password }) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>("/auth/password", {
       method: "POST",
-      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      body: json<Schemas["ChangePasswordRequest"]>({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
     }),
 };
 
@@ -833,7 +848,7 @@ async function streamChat(
   });
   if (!response.ok || !response.body) {
     if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const error: ErrorBody = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || `Request failed: ${response.status}`);
   }
 
@@ -1065,6 +1080,8 @@ export interface RepositoryPlugin {
   installed_version: string | null;
   // Built into the image, so it can't be removed here
   built_in: boolean;
+  // Whether the repository has a download for this server's platform
+  available: boolean;
 }
 
 export interface PluginRepository {
@@ -1079,6 +1096,8 @@ export interface PluginsInfo {
   repositories: PluginRepository[];
   // Installed from a repository that's since been removed, or can't be read
   other_installed: { package: string; version: string }[];
+  // Installed, but they couldn't be started
+  broken: { package: string; problem: string }[];
   can_add_repositories: boolean;
 }
 

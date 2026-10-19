@@ -10,5 +10,7 @@ The first time you open PennyChest it asks you to create a password; after that 
 Run this in the container, then open the app to choose a new one:
 
 ```bash
-docker exec <container> python -m pennychest.auth.reset_password
+docker exec <container> /pennychest reset-password
 ```
+
+It also signs out every device. Your data, access tokens and connected apps are kept.

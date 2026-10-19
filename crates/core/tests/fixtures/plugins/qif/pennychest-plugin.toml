@@ -1,0 +1,10 @@
+# The QIF example from crates/plugin/examples/qif, built for WASI by
+# tools/plugins/build-test-fixture.sh.
+name = "qif"
+version = "0.1.0"
+description = "QIF bank and card statements"
+protocol = 1
+kinds = ["importer"]
+
+[run]
+wasm = "qif.wasm"

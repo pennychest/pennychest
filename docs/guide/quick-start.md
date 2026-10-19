@@ -10,7 +10,7 @@ Sign up to [Render](https://render.com), click **Deploy Blueprint**, then open t
 
 ## In the cloud, from the command line
 
-[Fly.io](https://fly.io) is usually cheaper, as it stops PennyChest when nobody's using it. With [flyctl](https://fly.io/docs/flyctl/install/) installed, create `fly.toml`, changing `app` to a name of your own:
+[Fly.io](https://fly.io) is usually cheaper, as it stops PennyChest when nobody's using it, and PennyChest starts again in well under a second when someone does. With [flyctl](https://fly.io/docs/flyctl/install/) installed, create `fly.toml`, changing `app` to a name of your own:
 
 ```toml
 app = "my-pennychest"
@@ -30,7 +30,7 @@ app = "my-pennychest"
   min_machines_running = 0
 
 [[vm]]
-  memory = "512mb"
+  memory = "256mb"
 ```
 
 Then:
@@ -55,4 +55,4 @@ and open `https://my-pennychest.fly.dev`.
 
 ## Anywhere else
 
-Anything that runs Docker can host PennyChest: keep `/data` on a persistent volume, or point it at [PostgreSQL](installation.md#postgresql).
+Anything that runs Docker can host PennyChest, on amd64 or arm64 (such as a Raspberry Pi): keep `/data` on a persistent volume.
