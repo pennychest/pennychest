@@ -31,6 +31,7 @@ nav:
   - Guide:
       - Quick start: guide/quick-start.md
       - Installation: guide/installation.md
+      - Backups: backups.md
       - Plugins: guide/plugins.md
       - Signing in: guide/signing-in.md
       - Importing statements: guide/importing.md
@@ -38,9 +39,13 @@ nav:
       - Card taps: guide/card-taps.md
       - AI integration: guide/ai-integration.md
       - AI agents (MCP): guide/mcp.md
+  - Plugins:
+      - The plugin protocol: plugins/protocol.md
   - Development:
       - Local setup: guide/development.md
-      - CI and deployment: guide/deployment.md
+      - Testing: development/testing.md
+      - API types: development/api-types.md
+      - CI and releases: guide/deployment.md
 
 markdown_extensions:
   - admonition

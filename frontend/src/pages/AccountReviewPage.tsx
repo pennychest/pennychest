@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -11,6 +11,7 @@ import {
   type ImportTransaction,
   type RuleSuggestion,
 } from "../api/client";
+import { useElapsedSeconds } from "../hooks/useElapsedSeconds";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -52,7 +53,6 @@ export function AccountReviewPage() {
   const [selectedTxn, setSelectedTxn] = useState<ImportTransaction | null>(null);
   const [categoriseTarget, setCategoriseTarget] = useState<ImportTransaction | null>(null);
   const [transferTarget, setTransferTarget] = useState<ImportTransaction | null>(null);
-  const [aiElapsed, setAiElapsed] = useState(0);
 
   const { data: review, isLoading } = useQuery({
     queryKey: ["account-review", accountId],
@@ -98,11 +98,7 @@ export function AccountReviewPage() {
     },
   });
 
-  useEffect(() => {
-    if (!aiCategoriseMutation.isPending) { setAiElapsed(0); return; }
-    const t = setInterval(() => setAiElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [aiCategoriseMutation.isPending]);
+  const aiElapsed = useElapsedSeconds(aiCategoriseMutation.isPending);
 
   const categoriseMutation = useMutation({
     mutationFn: ({
@@ -497,8 +493,11 @@ function SuggestRulesDialog({
 
   const suggestions = suggestQuery.data?.suggestions ?? [];
 
-  // Pre-select all valid suggestions when they load
-  useEffect(() => {
+  // Pre-select all valid suggestions when they load. Adjusting state while rendering, rather
+  // than in an effect, means the list never shows a frame with the old selection.
+  const [suggestionsFor, setSuggestionsFor] = useState<typeof suggestQuery.data>();
+  if (suggestQuery.data !== suggestionsFor) {
+    setSuggestionsFor(suggestQuery.data);
     if (suggestQuery.data) {
       const valid = new Set(
         suggestQuery.data.suggestions
@@ -508,7 +507,7 @@ function SuggestRulesDialog({
       setSelected(valid);
       setDismissed(new Set());
     }
-  }, [suggestQuery.data]);
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: { pattern: string; match_type_id: number; target_account_id: number; priority: number; source: string; description: string | null }) =>

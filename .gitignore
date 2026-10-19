@@ -1,43 +1,24 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-*.egg
-dist/
-build/
-.eggs/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
+# Rust
+/target/
 
 # Node
 node_modules/
 frontend/dist/
+frontend/dev-dist/
 
-# Environment
+# Local data and environment
+/data/
 .env
 .env.local
 
-# IDE
+# Private test fixtures (real bank statements and databases): never commit
+fixtures/private/
+
+# Editors and OS
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Docker
-uploads/
-
-# Test fixtures (personal bank statements — never commit)
-backend/tests/fixtures/
-
-# Backend
-backend/static/
-
-# Local envs and build output
-.venv/
-frontend/dev-dist/
-
-# MkDocs build output
-site/
+# Docs
+/site/

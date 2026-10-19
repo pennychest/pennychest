@@ -1,38 +1,54 @@
 # syntax=docker/dockerfile:1
-# Stage 1: build the React frontend. Its output is static files, so build it natively
-# rather than under emulation when building for another platform.
-FROM --platform=$BUILDPLATFORM node:20-slim AS frontend-build
+# PennyChest as one static binary with the frontend inside it, in an image with nothing else
+# but CA certificates. Every stage that builds runs on the build machine's own platform and
+# cross-compiles, so an arm64 image builds as quickly as an amd64 one, without emulation:
+#
+#   docker buildx build --platform linux/amd64,linux/arm64 -t pennychest .
+
+# Stage 1: the React frontend, which is static files.
+FROM --platform=$BUILDPLATFORM node:20-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Python API + compiled frontend static files
-FROM python:3.12-slim
-WORKDIR /app
-COPY backend/pyproject.toml .
-RUN pip install --no-cache-dir -e ".[dev]" 2>/dev/null || pip install --no-cache-dir .
-COPY backend/ .
-RUN pip install --no-cache-dir -e .
+# Stage 2: the server, linked statically against musl. cargo-zigbuild uses zig as the C
+# compiler and linker for the target, for the C in SQLite and ring.
+FROM --platform=$BUILDPLATFORM rust:1.97-bookworm AS server
+ARG TARGETARCH
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3-pip \
+ && pip3 install --no-cache-dir --break-system-packages cargo-zigbuild==0.20.1 ziglang==0.13.0.post1 \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# The target is added to the toolchain rust-toolchain.toml pins, which is the one used here.
+COPY rust-toolchain.toml ./
+RUN case "$TARGETARCH" in \
+      amd64) echo x86_64-unknown-linux-musl ;; \
+      arm64) echo aarch64-unknown-linux-musl ;; \
+      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac > /rust-target \
+ && rustup target add "$(cat /rust-target)"
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+COPY tools tools
+COPY --from=frontend /frontend/dist frontend/dist
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo zigbuild --release --locked -p pennychest-server --bin pennychest \
+      --target "$(cat /rust-target)" \
+ && cp "target/$(cat /rust-target)/release/pennychest" /pennychest
 
-# Plugins to include, as space-separated pip requirements, e.g.
-#   --build-arg PENNYCHEST_PLUGINS="git+https://github.com/pennychest/pennychest-plugins@<tag>#subdirectory=hsbc"
-# git is only needed to fetch the plugins, so it's removed again in the same layer.
-ARG PENNYCHEST_PLUGINS=""
-RUN if [ -n "$PENNYCHEST_PLUGINS" ]; then \
-      set -e; \
-      apt-get update; \
-      apt-get install -y --no-install-recommends git; \
-      pip install --no-cache-dir $PENNYCHEST_PLUGINS; \
-      apt-get purge -y --auto-remove git; \
-      rm -rf /var/lib/apt/lists/*; \
-    fi
-
-# Copy the Vite build output into the location the API serves from
-COPY --from=frontend-build /frontend/dist ./static
-
-RUN mkdir -p /data/uploads
-
+# Stage 3: just the binary, and CA certificates for reaching AI providers.
+FROM scratch
+COPY --from=server /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=server /pennychest /pennychest
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+# The database, uploaded statements and plugins live here; mount a volume to keep them.
+# The server creates what it needs on its first start, and brings the database up to date
+# on every start, so there's no separate migration step.
+WORKDIR /data
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn pennychest.main:app --host 0.0.0.0 --port 8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD ["/pennychest", "healthcheck"]
+ENTRYPOINT ["/pennychest"]

@@ -1,36 +1,15 @@
+# PennyChest on this machine: docker compose up, then open http://localhost:8000.
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: pennychest
-      POSTGRES_PASSWORD: pennychest
-      POSTGRES_DB: pennychest
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pennychest"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        # Plugins to include, as pip requirements (see the Dockerfile and README)
-        PENNYCHEST_PLUGINS: ${PENNYCHEST_PLUGINS:-}
-    environment:
-      PENNYCHEST_DATABASE_URL: postgresql+psycopg2://pennychest:pennychest@db:5432/pennychest
-      PENNYCHEST_UPLOAD_DIR: /data/uploads
+  pennychest:
+    build: .
+    # Or use the published image instead of building it:
+    # image: ghcr.io/pennychest/pennychest:latest
     ports:
       - "8000:8000"
     volumes:
-      - uploads:/data/uploads
-    depends_on:
-      db:
-        condition: service_healthy
+      # The database, uploaded statements and plugins.
+      - pennychest-data:/data
+    restart: unless-stopped
 
 volumes:
-  pgdata:
-  uploads:
+  pennychest-data:

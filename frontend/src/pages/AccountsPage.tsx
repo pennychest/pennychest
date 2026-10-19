@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { accountsApi, setupApi, type Account } from "../api/client";
 import { formatCurrency, formatDate } from "../lib/utils";
@@ -282,6 +282,7 @@ function MyAccountsSection({
         }}
       />
       <AccountDetailDialog
+        key={detailAccount?.id}
         account={detailAccount}
         accounts={accounts}
         onOpenChange={(open) => { if (!open) setDetailAccount(null); }}
@@ -491,6 +492,7 @@ export function CategoryGrid({
         onOpenChange={(open) => { if (!open) setAddParent(null); }}
       />
       <AccountDetailDialog
+        key={detailAccount?.id}
         account={detailAccount}
         accounts={accounts}
         onOpenChange={(open) => { if (!open) setDetailAccount(null); }}
@@ -566,15 +568,6 @@ function AccountDetailDialog({
       account ? accountsApi.getOpeningBalance(account.id) : null,
     enabled: !!account && isAssetOrLiability,
   });
-
-  useEffect(() => {
-    if (account) {
-      setName(account.name);
-      setBankIdentifier(account.bank_identifier ?? "");
-      setSelectedIcon(account.icon ?? "");
-      setEditing(false);
-    }
-  }, [account]);
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<Account> }) =>
@@ -725,6 +718,7 @@ function AccountDetailDialog({
               onClick={() => {
                 setName(account.name);
                 setBankIdentifier(account.bank_identifier ?? "");
+                setSelectedIcon(account.icon ?? "");
                 setEditing(true);
               }}
             >

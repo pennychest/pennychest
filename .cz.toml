@@ -1,8 +1,10 @@
 [tool.commitizen]
 name = "cz_customize"
-# The version lives here and is copied into the backend package, which the API reports.
+# The version lives in the workspace Cargo.toml, which every crate inherits, and is reported by
+# /api/health, the MCP server and the OpenAPI description (whose info.version is the only line
+# indented four spaces).
 version = "0.4.0"
-version_files = ["backend/pyproject.toml:^version"]
+version_files = ["Cargo.toml:^version", 'openapi.json:^    "version"']
 tag_format = "v$version"
 update_changelog_on_bump = true
 annotated_tag = true
@@ -10,6 +12,9 @@ annotated_tag = true
 bump_message = "🔖 Release v$new_version"
 # Pre-1.0: a breaking change bumps the minor, rather than jumping to 1.0.0.
 major_version_zero = true
+# Cargo.lock records the workspace crates' versions too: bring it into line, so builds with
+# --locked keep working, and include it in the release commit.
+pre_bump_hooks = ["cargo update --workspace --offline", "git add Cargo.lock"]
 
 [tool.commitizen.customize]
 # Which gitmoji cut a release, and how far the version moves. A commit whose

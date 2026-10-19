@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -180,7 +180,7 @@ export function ImportPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [pendingFiles, setPendingFiles] = useState<FileEntry[]>([]);
-  const [groupStates, setGroupStates] = useState<Record<string, GroupState>>({});
+  const [groupStates, setGroupStates] = useState<Record<string, Partial<GroupState>>>({});
   const [dragOver, setDragOver] = useState(false);
 
   const { data: accounts = [] } = useQuery({
@@ -238,27 +238,6 @@ export function ImportPage() {
     return !hasChildren && depth >= 2;
   });
 
-  // Initialize group states when statements finish detection
-  useEffect(() => {
-    setGroupStates((prev) => {
-      const next = { ...prev };
-      for (const f of pendingFiles) {
-        if (!f.detection) continue;
-        const key = f.detection.bank_identifier;
-        if (next[key]) continue; // already initialized; don't overwrite user changes
-        next[key] = {
-          phase: "confirming",
-          accountId: f.detection.suggested_account_id
-            ? String(f.detection.suggested_account_id)
-            : "",
-          importedAccountId: null,
-          error: null,
-        };
-      }
-      return next;
-    });
-  }, [pendingFiles]);
-
   // Derived: statements grouped by bank_identifier
   const statementGroups = useMemo(() => {
     const groups = new Map<string, FileEntry[]>();
@@ -284,6 +263,19 @@ export function ImportPage() {
       ...prev,
       [bankId]: { ...prev[bankId], ...updates },
     }));
+  }
+
+  // A group's state before anything's been done with it: confirming, with the account the
+  // first statement suggests. Only what's changed since is kept in groupStates.
+  function groupState(bankId: string, entries: FileEntry[]): GroupState {
+    const suggested = entries[0]?.detection?.suggested_account_id;
+    return {
+      phase: "confirming",
+      accountId: suggested ? String(suggested) : "",
+      importedAccountId: null,
+      error: null,
+      ...groupStates[bankId],
+    };
   }
 
   async function processFile(id: string, file: File) {
@@ -491,7 +483,7 @@ export function ImportPage() {
               key={bankId}
               bankId={bankId}
               entries={entries}
-              groupState={groupStates[bankId]}
+              groupState={groupState(bankId, entries)}
               allAccounts={accounts}
               leafBankAccounts={bankAccounts}
               onImport={(accountId) => importGroup(bankId, entries, accountId)}
