@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.5.1 (2026-10-19)
+
+### Changed
+
+- 🐳 Build both platforms without the cache mounts colliding (#9)
+
 ## v0.5.0 (2026-10-19)
 
 ### Added
