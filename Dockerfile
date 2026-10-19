@@ -34,8 +34,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY tools tools
 COPY --from=frontend /frontend/dist frontend/dist
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+# Both platforms build at once: they share the registry one at a time, and each has its own
+# target directory.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,id=target-$TARGETARCH \
     cargo zigbuild --release --locked -p pennychest-server --bin pennychest \
       --target "$(cat /rust-target)" \
  && cp "target/$(cat /rust-target)/release/pennychest" /pennychest
