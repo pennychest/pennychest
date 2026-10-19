@@ -3,7 +3,7 @@ name = "cz_customize"
 # The version lives in the workspace Cargo.toml, which every crate inherits, and is reported by
 # /api/health, the MCP server and the OpenAPI description (whose info.version is the only line
 # indented four spaces).
-version = "0.4.0"
+version = "0.5.0"
 version_files = ["Cargo.toml:^version", 'openapi.json:^    "version"']
 tag_format = "v$version"
 update_changelog_on_bump = true
