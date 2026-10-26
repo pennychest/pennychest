@@ -11,7 +11,7 @@ A plugin is a separate program that PennyChest runs and talks to over its standa
 ## Installing plugins
 
 **Settings > Plugins** lists the plugins in the official repository,
-[pennychest-plugins](https://github.com/pennychest/pennychest-plugins), and in any
+[pennychest/plugins](https://github.com/pennychest/plugins), and in any
 others you've added. **Install** downloads one, checks it against the checksum its repository
 lists, and makes it available straight away: its importers appear on the import page, and its
 exporters on the export page. **Update** and **Remove** do what they say.

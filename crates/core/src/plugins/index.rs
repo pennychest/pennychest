@@ -1,7 +1,7 @@
 //! Plugin repositories: where Settings finds plugins to install.
 //!
 //! A repository is a link, usually to a GitHub repository such as a fork of
-//! pennychest-plugins, with a `plugins.json` at its root:
+//! pennychest/plugins, with a `plugins.json` at its root:
 //!
 //! ```json
 //! {
@@ -41,7 +41,7 @@ use serde::Deserialize;
 use crate::ai::http::{Request, Transport, TransportError};
 use crate::settings::{Json, Setting};
 
-pub const OFFICIAL: &str = "https://github.com/pennychest/pennychest-plugins";
+pub const OFFICIAL: &str = "https://github.com/pennychest/plugins";
 pub const INDEX_FILE: &str = "plugins.json";
 /// The repositories added in Settings.
 pub const REPOSITORIES: Setting<Json<Vec<String>>> = Setting::new("plugins.repositories");
@@ -234,7 +234,7 @@ mod tests {
     fn index_urls() {
         assert_eq!(
             index_url(OFFICIAL),
-            "https://raw.githubusercontent.com/pennychest/pennychest-plugins/HEAD/plugins.json"
+            "https://raw.githubusercontent.com/pennychest/plugins/HEAD/plugins.json"
         );
         assert_eq!(
             index_url("https://example.com/plugins"),

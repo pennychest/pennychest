@@ -298,7 +298,7 @@ Settings > Plugins installs plugins from **repositories**. A repository is a lin
 `plugins.json` at its root. For a GitHub repository that's
 `https://raw.githubusercontent.com/<owner>/<repo>/HEAD/plugins.json`; any other link is taken
 to be the folder holding it, or the file itself if it ends in `.json`. The official repository
-is [pennychest-plugins](https://github.com/pennychest/pennychest-plugins).
+is [pennychest/plugins](https://github.com/pennychest/plugins).
 
 ```json
 {
