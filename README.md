@@ -29,6 +29,14 @@ A self-hosted personal finance app with real double-entry accounting. Import ban
 
 ## Quick start
 
+### In the cloud, in one click
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pennychest/pennychest)
+
+Click **Deploy Blueprint**, then open the address Render gives you. It needs a paid Render plan for the disk your data is kept on. For Fly.io and other options, see the [Quick start guide](https://pennychest.github.io/guide/quick-start/).
+
+### On your own computer
+
 ```bash
 docker run -d -p 8000:8000 -v pennychest-data:/data ghcr.io/pennychest/pennychest:latest
 ```

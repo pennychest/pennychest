@@ -6,7 +6,6 @@ PennyChest is a personal finance app you run yourself. Import your bank statemen
   <img src="assets/dashboard.png" alt="Dashboard" width="220">
   <img src="assets/categories.png" alt="Spending categories" width="220">
   <img src="assets/chat.png" alt="Chat" width="220">
-  <img src="assets/card-taps.gif" alt="Card taps" width="220">
 </p>
 
 ## Tech stack
