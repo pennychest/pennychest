@@ -2,6 +2,8 @@
 
 Statements arrive weeks after you spend. Card taps close that gap: each time you pay with Apple Pay, an iPhone shortcut sends the payment to PennyChest straight away. It shows up on the **Card taps** page, already categorised. When the statement is imported later, each tap is matched to its statement line and passes its category on.
 
+![Card taps](../assets/card-taps.gif){ width="250" }
+
 ## What you need
 
 - An iPhone with your cards in Apple Wallet.
