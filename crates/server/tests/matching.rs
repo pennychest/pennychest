@@ -215,6 +215,54 @@ async fn exact_duplicates_are_flagged_without_a_model() {
 }
 
 #[tokio::test]
+async fn duplicates_with_extra_words_are_flagged_without_a_model() {
+    let mut s = without_jev().await;
+    let first = s
+        .import(
+            "Assets:Current",
+            &[
+                ("20/09/2026", "COUNCIL TAX", "-150.00"),
+                ("20/09/2026", "TESCO STORES 2041", "-12.50"),
+                ("20/09/2026", "TESCO", "-12.50"),
+                ("20/09/2026", "BOOTS STORE", "-6.00"),
+            ],
+            "a.pdf",
+        )
+        .await;
+    let second = s
+        .import(
+            "Assets:Current",
+            &[
+                ("20/09/2026", "COUNCIL TAX DD", "-150.00"),
+                // Both of the first file's fit, but the exact one is the next row's.
+                ("20/09/2026", "TESCO STORES 2041 LONDON GBR", "-12.50"),
+                ("20/09/2026", "TESCO STORES 2041", "-12.50"),
+                ("20/09/2026", "BOOTS PHARMACY", "-6.00"),
+                ("21/09/2026", "COUNCIL TAX DD", "-150.00"),
+            ],
+            "b.ofx",
+        )
+        .await;
+    let originals = by_description(&first);
+    let flagged: Vec<&Value> = second
+        .iter()
+        .map(|t| &t["duplicate_of"]["transaction_id"])
+        .collect();
+    // Newest first.
+    assert_eq!(
+        flagged,
+        [
+            &Value::Null,
+            &Value::Null,
+            &originals["TESCO STORES 2041"]["id"],
+            &originals["TESCO"]["id"],
+            &originals["COUNCIL TAX"]["id"],
+        ]
+    );
+    assert!(s.api.bodies(JEV).is_empty());
+}
+
+#[tokio::test]
 async fn the_model_spots_duplicates_described_differently() {
     let mut s = with_jev(|a, _| if mentions(a, "TESCO") { 0.95 } else { 0.1 }).await;
     let first = s

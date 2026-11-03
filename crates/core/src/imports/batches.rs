@@ -116,7 +116,7 @@ fn safe_name(filename: &str) -> String {
 
 /// Imports a statement: one pending transaction per row, between the statement's account and
 /// the category a rule picks (or Expenses:Uncategorised), with transfers between the user's
-/// own accounts paired up and exact duplicates of transactions already there flagged.
+/// own accounts paired up and duplicates of transactions already there flagged.
 pub async fn import(
     db: &SqlitePool,
     upload_dir: &Path,
@@ -391,7 +391,7 @@ async fn record(
     if let Some(pending) = pending {
         pair_transfers(&mut tx, account.id, pending, &created).await?;
     }
-    flag_exact_duplicates(&mut tx, batch_id, account.id, &created).await?;
+    flag_duplicates(&mut tx, batch_id, account.id, &created).await?;
     tx.commit().await?;
 
     Ok(ImportOutcome {
@@ -473,16 +473,32 @@ pub(crate) fn normalise(text: &str) -> String {
         .join(" ")
 }
 
-/// Points each new transaction that's identical to one already on the same account (same
-/// date, amount and description, from another import or added by hand) at it, for the user to
-/// review. Matching ones that differ is left to the model (see `matching`).
-async fn flag_exact_duplicates(
+/// Whether every word of one normalised description is in the other, as with "council tax" and
+/// "council tax dd": how the same transaction often differs between one bank's file formats.
+fn same_words(a: &str, b: &str) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    let (shorter, longer) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let mut words: Vec<&str> = longer.split(' ').collect();
+    shorter.split(' ').all(|word| {
+        let found = words.iter().position(|w| *w == word);
+        found.map(|i| words.swap_remove(i)).is_some()
+    })
+}
+
+/// Points each new transaction that matches one already on the same account (same date and
+/// amount, and the same description or one with the other's words in it, from another import
+/// or added by hand) at it, for the user to review. Identical descriptions are paired first, so
+/// a looser match can't take a transaction's exact twin. Matching ones that differ further is
+/// left to the model (see `matching`).
+async fn flag_duplicates(
     tx: &mut SqliteConnection,
     batch_id: i64,
     account_id: i64,
     rows: &[NewRow],
 ) -> Result<(), sqlx::Error> {
-    let mut claimed: Vec<i64> = Vec::new();
+    let mut open = Vec::with_capacity(rows.len());
     for row in rows {
         let candidates: Vec<(i64, String)> = sqlx::query_as(
             "SELECT t.id, t.description FROM transactions t
@@ -498,18 +514,28 @@ async fn flag_exact_duplicates(
         .bind(batch_id)
         .fetch_all(&mut *tx)
         .await?;
-        let wanted = normalise(&row.description);
-        let same = candidates
-            .into_iter()
-            .find(|(id, description)| normalise(description) == wanted && !claimed.contains(id));
-        if let Some((original, _)) = same {
-            sqlx::query("UPDATE transactions SET duplicate_of_id = ? WHERE id = ?")
-                .bind(original)
-                .bind(row.id)
-                .execute(&mut *tx)
-                .await?;
-            claimed.push(original);
+        open.push((row.id, normalise(&row.description), candidates));
+    }
+    let mut claimed: Vec<i64> = Vec::new();
+    let tests: [fn(&str, &str) -> bool; 2] = [|a, b| a == b, same_words];
+    for same in tests {
+        let mut unmatched = Vec::new();
+        for (id, wanted, candidates) in open {
+            let found = candidates.iter().find(|(candidate, description)| {
+                same(&wanted, &normalise(description)) && !claimed.contains(candidate)
+            });
+            if let Some((original, _)) = found {
+                sqlx::query("UPDATE transactions SET duplicate_of_id = ? WHERE id = ?")
+                    .bind(original)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                claimed.push(*original);
+            } else {
+                unmatched.push((id, wanted, candidates));
+            }
         }
+        open = unmatched;
     }
     Ok(())
 }
@@ -1492,5 +1518,18 @@ mod tests {
     #[test]
     fn normalises_descriptions() {
         assert_eq!(normalise("TESCO  Stores*2041!"), "tesco stores 2041");
+    }
+
+    #[test]
+    fn compares_descriptions_by_their_words() {
+        assert!(same_words("council tax", "council tax dd"));
+        assert!(same_words("tesco london gbr", "tesco"));
+        assert!(same_words("flat 2 j smith", "j smith flat 2 so"));
+        assert!(!same_words("tesco express", "tesco stores"));
+        // A whole word, and as many times as it's there.
+        assert!(!same_words("tes", "tesco"));
+        assert!(!same_words("a a", "a b c"));
+        assert!(!same_words("", "tesco"));
+        assert!(!same_words("", ""));
     }
 }
