@@ -451,6 +451,10 @@ export const importsApi = {
   deleteCsvTemplate: (id: number) => request<void>(`/imports/csv/templates/${id}`, { method: "DELETE" }),
   listBatches: () => request<ImportBatch[]>("/imports/batches"),
   getBatch: (batchId: number) => request<ImportReview>(`/imports/batches/${batchId}`),
+  deleteDuplicates: (batchId: number) =>
+    request<{ deleted: number }>(`/imports/batches/${batchId}/delete-duplicates`, {
+      method: "POST",
+    }),
   confirmAll: (batchId: number) =>
     request<{ confirmed: number }>(`/imports/batches/${batchId}/confirm-all`, {
       method: "POST",

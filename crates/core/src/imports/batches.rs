@@ -934,7 +934,7 @@ pub async fn account_review(
     })
 }
 
-/// Confirms a batch's pending transactions. Returns how many were.
+/// Confirms a batch's pending transactions, except flagged duplicates. Returns how many were.
 pub async fn confirm_batch(db: &SqlitePool, id: i64) -> Result<u64, ImportError> {
     let mut conn = db.acquire().await?;
     batch_row(&mut conn, id)
@@ -942,7 +942,7 @@ pub async fn confirm_batch(db: &SqlitePool, id: i64) -> Result<u64, ImportError>
         .ok_or(ImportError::BatchNotFound)?;
     Ok(sqlx::query(
         "UPDATE transactions SET status = 'confirmed'
-         WHERE import_batch_id = ? AND status = 'pending'",
+         WHERE import_batch_id = ? AND status = 'pending' AND duplicate_of_id IS NULL",
     )
     .bind(id)
     .execute(&mut *conn)
@@ -950,11 +950,27 @@ pub async fn confirm_batch(db: &SqlitePool, id: i64) -> Result<u64, ImportError>
     .rows_affected())
 }
 
-/// Confirms the pending transactions of every import into an account.
+/// Deletes an import's transactions flagged as duplicates, leaving the ones they duplicate.
+/// Returns how many went.
+pub async fn delete_duplicates(db: &SqlitePool, id: i64) -> Result<u64, ImportError> {
+    let mut conn = db.acquire().await?;
+    batch_row(&mut conn, id)
+        .await?
+        .ok_or(ImportError::BatchNotFound)?;
+    Ok(sqlx::query(
+        "DELETE FROM transactions WHERE import_batch_id = ? AND duplicate_of_id IS NOT NULL",
+    )
+    .bind(id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected())
+}
+
+/// Confirms the pending transactions of every import into an account, except flagged duplicates.
 pub async fn confirm_account(db: &SqlitePool, account_id: i64) -> Result<u64, sqlx::Error> {
     Ok(sqlx::query(
         "UPDATE transactions SET status = 'confirmed'
-         WHERE status = 'pending'
+         WHERE status = 'pending' AND duplicate_of_id IS NULL
            AND import_batch_id IN (SELECT id FROM import_batches WHERE account_id = ?)",
     )
     .bind(account_id)

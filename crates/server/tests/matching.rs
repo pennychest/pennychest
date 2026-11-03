@@ -362,6 +362,80 @@ async fn flagged_duplicates_can_be_kept_or_deleted() {
     );
 }
 
+#[tokio::test]
+async fn an_imports_duplicates_can_be_deleted_together() {
+    let mut s = without_jev().await;
+    let first = s
+        .import(
+            "Assets:Current",
+            &[("20/09/2026", "COUNCIL TAX", "-150.00")],
+            "a.ofx",
+        )
+        .await;
+    let rows = [
+        ("20/09/2026", "COUNCIL TAX DD", "-150.00"),
+        ("21/09/2026", "TFL", "-3.10"),
+    ];
+    let second = s.import("Assets:Current", &rows, "b.pdf").await;
+    let batch = second[0]["import_batch_id"].as_i64().unwrap();
+
+    let path = format!("/api/imports/batches/{batch}/delete-duplicates");
+    let deleted = s.app.post(&path, json!(null)).await;
+    assert_eq!(deleted.body, json!({"deleted": 1}));
+    let left = s.transactions(batch).await;
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0]["description"], "TFL");
+    // The one it duplicated stays.
+    let original = first[0]["import_batch_id"].as_i64().unwrap();
+    assert_eq!(s.transactions(original).await.len(), 1);
+
+    let again = s.app.post(&path, json!(null)).await;
+    assert_eq!(again.body, json!({"deleted": 0}));
+    s.app
+        .post("/api/imports/batches/9999/delete-duplicates", json!(null))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn confirming_everything_leaves_flagged_duplicates_pending() {
+    let mut s = without_jev().await;
+    s.import(
+        "Assets:Current",
+        &[("20/09/2026", "COUNCIL TAX", "-150.00")],
+        "a.ofx",
+    )
+    .await;
+    let rows = [
+        ("20/09/2026", "COUNCIL TAX DD", "-150.00"),
+        ("21/09/2026", "TFL", "-3.10"),
+    ];
+    let second = s.import("Assets:Current", &rows, "b.pdf").await;
+    let batch = second[0]["import_batch_id"].as_i64().unwrap();
+
+    let confirmed = s
+        .app
+        .post(
+            &format!("/api/imports/batches/{batch}/confirm-all"),
+            json!(null),
+        )
+        .await;
+    assert_eq!(confirmed.body, json!({"confirmed": 1}));
+    let account = s.accounts["Assets:Current"];
+    let confirmed = s
+        .app
+        .post(
+            &format!("/api/imports/account/{account}/confirm-all"),
+            json!(null),
+        )
+        .await;
+    // The first import's, and still not the duplicate.
+    assert_eq!(confirmed.body, json!({"confirmed": 1}));
+    let found = by_description(&s.transactions(batch).await);
+    assert_eq!(found["TFL"]["status"], "confirmed");
+    assert_eq!(found["COUNCIL TAX DD"]["status"], "pending");
+}
+
 // Transfers
 
 #[tokio::test]
