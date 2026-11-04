@@ -7,6 +7,17 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.6.0 (2026-11-04)
+
+### Added
+
+- ✨ Import a month in parts, then the full statement: wider duplicate check and Delete Duplicates (#13)
+
+### Documentation
+
+- 📝 Deploy to Render button, and the card taps GIF on its own page (#11)
+- 📝 Plugin protocol: drop the Python example plugin (#10)
+
 ## v0.5.1 (2026-10-19)
 
 ### Changed
