@@ -20,3 +20,9 @@ You can change any column, and the file can't be imported until it has a date, a
 ### Templates
 
 Once the columns are right, give them a name under **Save as a template**, e.g. *Monzo export*. Later files with the same headers use the template straight away. Header case and spacing don't matter.
+
+## Duplicates
+
+You can import a month's transactions a few at a time and still import the full statement at the end. A new transaction is flagged as a possible duplicate when one already on the account has the same date and amount, and the same description or one with all the same words in it, such as *COUNCIL TAX* and *COUNCIL TAX DD*. If *Matching taps, duplicates and transfers* is on, its model also looks for ones described differently, up to three days apart.
+
+On the import's review page, delete or keep each one, or press **Delete Duplicates** to delete them all, leaving only what the statement added. The transactions they duplicate stay as they are. **Confirm All** skips flagged transactions, so they can't count twice unless you confirm one yourself.

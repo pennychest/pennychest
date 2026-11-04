@@ -3,11 +3,11 @@
 //! pairing up transfers between the user's own accounts whose two sides are described
 //! differently.
 //!
-//! Exact duplicates and exact transfer pairs are found as the import is recorded (see
-//! `batches`). Everything here needs the "matching" task's model, straight after the import if
-//! it runs automatically or later from the import's review page, and acts only on answers at
-//! or above `MIN_PROBABILITY`; if the model fails, the import goes ahead without it (the error
-//! is in the AI request logs).
+//! Duplicates on the same day with the same words, and exact transfer pairs, are found as the
+//! import is recorded (see `batches`). Everything here needs the "matching" task's model,
+//! straight after the import if it runs automatically or later from the import's review page,
+//! and acts only on answers at or above `MIN_PROBABILITY`; if the model fails, the import goes
+//! ahead without it (the error is in the AI request logs).
 
 use std::collections::HashSet;
 

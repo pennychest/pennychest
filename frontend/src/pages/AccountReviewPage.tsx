@@ -141,6 +141,7 @@ export function AccountReviewPage() {
 
   const { transactions, batches } = review;
   const pendingCount = transactions.filter((t) => t.status === "pending").length;
+  const confirmableCount = transactions.filter((t) => t.status === "pending" && !t.duplicate_of).length;
   const uncategorisedCount = transactions.filter(
     (t) => t.categorised_by === "import_default"
   ).length;
@@ -183,7 +184,7 @@ export function AccountReviewPage() {
 
       {/* Action bar */}
       <div className="flex gap-2 flex-wrap">
-        {pendingCount > 0 && (
+        {confirmableCount > 0 && (
           <Button
             onClick={() => confirmAllMutation.mutate()}
             disabled={confirmAllMutation.isPending}
@@ -191,7 +192,7 @@ export function AccountReviewPage() {
             <CheckCheck className="h-4 w-4 mr-1" />
             {confirmAllMutation.isPending
               ? "Confirming..."
-              : `Confirm All (${pendingCount})`}
+              : `Confirm All (${confirmableCount})`}
           </Button>
         )}
         {uncategorisedCount > 0 && (

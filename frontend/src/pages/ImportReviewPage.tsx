@@ -37,6 +37,7 @@ import { formatCurrency, formatDate, formatAccountPath } from "../lib/utils";
 import {
   Check,
   CheckCheck,
+  Copy,
   ArrowLeft,
   ArrowLeftRight,
   RefreshCw,
@@ -86,6 +87,15 @@ export function ImportReviewPage() {
 
   const confirmAllMutation = useMutation({
     mutationFn: () => importsApi.confirmAll(parseInt(batchId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["import-review", batchId] });
+      queryClient.invalidateQueries({ queryKey: ["import-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+
+  const deleteDuplicatesMutation = useMutation({
+    mutationFn: () => importsApi.deleteDuplicates(parseInt(batchId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["import-review", batchId] });
       queryClient.invalidateQueries({ queryKey: ["import-batches"] });
@@ -160,6 +170,8 @@ export function ImportReviewPage() {
 
   const { batch, transactions } = review;
   const pendingCount = transactions.filter((t) => t.status === "pending").length;
+  const confirmableCount = transactions.filter((t) => t.status === "pending" && !t.duplicate_of).length;
+  const duplicateCount = transactions.filter((t) => t.duplicate_of).length;
   const uncategorisedCount = transactions.filter(
     (t) => t.categorised_by === "import_default"
   ).length;
@@ -207,7 +219,21 @@ export function ImportReviewPage() {
 
       {/* Action bar */}
       <div className="flex gap-2 flex-wrap">
-        {pendingCount > 0 && (
+        {duplicateCount > 0 && (
+          <Button
+            variant="destructive"
+            onClick={() => {
+              if (window.confirm(`Delete ${plural(duplicateCount, "duplicate")} from this import? This can't be undone.`)) {
+                deleteDuplicatesMutation.mutate();
+              }
+            }}
+            disabled={deleteDuplicatesMutation.isPending}
+          >
+            <Copy className="h-4 w-4 mr-1" />
+            {deleteDuplicatesMutation.isPending ? "Deleting..." : `Delete Duplicates (${duplicateCount})`}
+          </Button>
+        )}
+        {confirmableCount > 0 && (
           <Button
             onClick={() => confirmAllMutation.mutate()}
             disabled={confirmAllMutation.isPending}
@@ -215,7 +241,7 @@ export function ImportReviewPage() {
             <CheckCheck className="h-4 w-4 mr-1" />
             {confirmAllMutation.isPending
               ? "Confirming..."
-              : `Confirm All (${pendingCount})`}
+              : `Confirm All (${confirmableCount})`}
           </Button>
         )}
         <Button
@@ -296,9 +322,9 @@ export function ImportReviewPage() {
         {insightsMutation.isSuccess && (
           <span className="text-sm text-green-600 self-center">Checked for subscriptions and unusual charges</span>
         )}
-        {(matchMutation.isError || insightsMutation.isError) && (
+        {(matchMutation.isError || insightsMutation.isError || deleteDuplicatesMutation.isError) && (
           <span className="text-sm text-destructive self-center">
-            {matchMutation.error?.message ?? insightsMutation.error?.message}
+            {matchMutation.error?.message ?? insightsMutation.error?.message ?? deleteDuplicatesMutation.error?.message}
           </span>
         )}
       </div>

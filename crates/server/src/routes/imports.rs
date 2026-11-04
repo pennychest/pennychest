@@ -38,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/batches/{id}", get(review_batch).delete(delete_batch))
         .route("/batches/{id}/file", get(download_file))
         .route("/batches/{id}/confirm-all", post(confirm_batch))
+        .route("/batches/{id}/delete-duplicates", post(delete_duplicates))
         .route("/batches/{id}/reapply-rules", post(reapply_rules))
         .route("/batches/{id}/match", post(match_batch))
         .route("/transactions/{id}/categorise", put(categorise))
@@ -324,6 +325,20 @@ async fn confirm_batch(
 ) -> ApiResult<Json<Confirmed>> {
     Ok(Json(Confirmed {
         confirmed: batches::confirm_batch(&state.db, id).await?,
+    }))
+}
+
+#[derive(Serialize)]
+struct Deleted {
+    deleted: u64,
+}
+
+async fn delete_duplicates(
+    State(state): State<AppState>,
+    PathParam(id): PathParam<i64>,
+) -> ApiResult<Json<Deleted>> {
+    Ok(Json(Deleted {
+        deleted: batches::delete_duplicates(&state.db, id).await?,
     }))
 }
 
