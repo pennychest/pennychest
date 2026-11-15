@@ -106,11 +106,20 @@ pub struct CreateCategoryInput {
     /// The category to create it under (path or name), e.g. "Expenses:Entertainment" or
     /// "Income".
     parent: String,
+    /// A Lucide icon name, e.g. "ShoppingCart". Left out, the category shows its parent's
+    /// icon.
+    #[serde(default)]
+    #[schemars(length(min = 1, max = 60))]
+    icon: Option<String>,
 }
 
 impl Check for CreateCategoryInput {
     fn check(&self) -> Result<(), String> {
-        length("name", &self.name, 1, 60)
+        length("name", &self.name, 1, 60)?;
+        match &self.icon {
+            Some(icon) => length("icon", icon, 1, 60),
+            None => Ok(()),
+        }
     }
 }
 
@@ -146,7 +155,7 @@ pub async fn create_category(
             kind: parent.kind,
             currency: parent.currency.clone(),
             bank_identifier: None,
-            icon: None,
+            icon: input.icon,
         },
     )
     .await
