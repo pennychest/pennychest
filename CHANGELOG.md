@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.7.0 (2026-11-15)
+
+### Added
+
+- ✨ Import accounts into an existing chart, with their icons (#14)
+
 ## v0.6.0 (2026-11-04)
 
 ### Added
