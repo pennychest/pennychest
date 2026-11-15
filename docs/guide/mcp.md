@@ -33,6 +33,7 @@ An agent can always look things up. It can change things only if you allow it, s
 |---|---|
 | `create_category` | Add a category under an existing one |
 | `rename_category` | Rename a category, keeping everything attached to it |
+| `set_category_icon` | Set or remove a category's icon |
 | `create_rule` | Add a rule for future imports |
 | `set_budget` | Set a monthly or annual budget for a category |
 | `delete_budget` | Remove a budget |

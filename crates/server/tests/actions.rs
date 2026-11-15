@@ -28,9 +28,10 @@ const READ: [&str; 14] = [
     "savings_opportunities",
     "transactions_digest",
 ];
-const ORGANISE: [&str; 5] = [
+const ORGANISE: [&str; 6] = [
     "create_category",
     "rename_category",
+    "set_category_icon",
     "create_rule",
     "set_budget",
     "delete_budget",
@@ -420,6 +421,46 @@ async fn card_taps() {
 }
 
 // Changing data
+
+/// A category's icon as list_categories gives it: null when it has none.
+async fn icon_of(app: &mut TestApp, path: &str) -> Value {
+    ok(app, "list_categories", json!({})).await["categories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["path"] == path)
+        .unwrap()["icon"]
+        .clone()
+}
+
+#[tokio::test]
+async fn set_category_icon() {
+    let mut app = TestApp::signed_in().await;
+    ledger(&mut app).await;
+    let set = ok(
+        &mut app,
+        "set_category_icon",
+        json!({"category": "Food", "icon": "Carrot"}),
+    )
+    .await;
+    assert_eq!(
+        set["category"],
+        json!({"path": "Expenses:Food", "name": "Food", "icon": "Carrot"})
+    );
+    assert_eq!(icon_of(&mut app, "Expenses:Food").await, "Carrot");
+
+    ok(&mut app, "set_category_icon", json!({"category": "Food"})).await;
+    assert_eq!(icon_of(&mut app, "Expenses:Food").await, Value::Null);
+
+    for bad in [
+        json!({"category": "Food", "icon": ""}),
+        json!({"category": "Nowhere", "icon": "Carrot"}),
+        json!({"category": "Assets:Bank", "icon": "Carrot"}),
+    ] {
+        let response = act(&mut app, "set_category_icon", bad).await;
+        assert!(response.status.is_client_error(), "{}", response.body);
+    }
+}
 
 #[tokio::test]
 async fn create_category() {

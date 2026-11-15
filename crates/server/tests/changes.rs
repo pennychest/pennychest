@@ -193,6 +193,39 @@ async fn undo_renaming_a_category() {
 }
 
 #[tokio::test]
+async fn undo_setting_a_category_icon() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let food = format!("/api/accounts/{}", ids["Expenses:Food"]);
+    let before = app.get(&food).await.body["icon"].clone();
+    let set = ok(
+        &mut app,
+        "set_category_icon",
+        json!({"category": "Food", "icon": "Carrot"}),
+    )
+    .await;
+    assert_eq!(app.get(&food).await.body["icon"], "Carrot");
+    undone(&mut app, &set).await;
+    assert_eq!(app.get(&food).await.body["icon"], before);
+
+    let first = ok(
+        &mut app,
+        "set_category_icon",
+        json!({"category": "Food", "icon": "Carrot"}),
+    )
+    .await;
+    ok(
+        &mut app,
+        "set_category_icon",
+        json!({"category": "Food", "icon": "Apple"}),
+    )
+    .await;
+    let response = undo(&mut app, &first["change"]["id"]).await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    assert!(detail(&response).contains("changed again"));
+}
+
+#[tokio::test]
 async fn undo_budgets() {
     let mut app = TestApp::signed_in().await;
     ledger(&mut app).await;

@@ -8,7 +8,7 @@ use sqlx::{QueryBuilder, Sqlite, SqliteConnection};
 
 use super::ledger::{Added, Deleted, Edited, Reviewed, update_posting};
 use super::write::{
-    self, BudgetDeleted, BudgetSet, CreatedCategory, CreatedRule, Recategorised, Renamed,
+    self, BudgetDeleted, BudgetSet, CreatedCategory, CreatedRule, IconSet, Recategorised, Renamed,
     stored_amount,
 };
 
@@ -32,9 +32,10 @@ fn read<T: DeserializeOwned>(data: Value) -> Result<T, UndoError> {
 
 /// The actions `reverse` undoes: every action that changes data, as a test checks.
 #[cfg(test)]
-pub const UNDOABLE: [&str; 11] = [
+pub const UNDOABLE: [&str; 12] = [
     "create_category",
     "rename_category",
+    "set_category_icon",
     "create_rule",
     "set_budget",
     "delete_budget",
@@ -54,6 +55,7 @@ pub async fn reverse(
     match action {
         "create_category" => create_category(db, read(data)?).await,
         "rename_category" => rename_category(db, read(data)?).await,
+        "set_category_icon" => set_category_icon(db, read(data)?).await,
         "create_rule" => create_rule(db, read(data)?).await,
         "set_budget" => set_budget(db, read(data)?).await,
         "delete_budget" => delete_budget(db, read(data)?).await,
@@ -142,6 +144,25 @@ async fn rename_category(db: &mut SqliteConnection, data: Renamed) -> Result<(),
         )));
     }
     write::move_account(db, data.account_id, &path, &data.from_path, &data.from_name).await?;
+    Ok(())
+}
+
+async fn set_category_icon(db: &mut SqliteConnection, data: IconSet) -> Result<(), UndoError> {
+    let icon: Option<Option<String>> = sqlx::query_scalar("SELECT icon FROM accounts WHERE id = ?")
+        .bind(data.account_id)
+        .fetch_optional(&mut *db)
+        .await?;
+    let Some(icon) = icon else {
+        return Err(refuse("That category has since been deleted."));
+    };
+    if icon != data.to {
+        return Err(refuse("Its icon has been changed again since."));
+    }
+    sqlx::query("UPDATE accounts SET icon = ? WHERE id = ?")
+        .bind(&data.from)
+        .bind(data.account_id)
+        .execute(db)
+        .await?;
     Ok(())
 }
 
