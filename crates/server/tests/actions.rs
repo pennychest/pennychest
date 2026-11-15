@@ -451,10 +451,19 @@ async fn create_category() {
     let income = ok(
         &mut app,
         "create_category",
-        json!({"name": "Dividends", "parent": "Income"}),
+        json!({"name": "Dividends", "parent": "Income", "icon": "TrendingUp"}),
     )
     .await;
     assert_eq!(income["created"]["type"], "income");
+    let accounts = app.get("/api/accounts").await;
+    let dividends = accounts
+        .body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["full_path"] == "Income:Dividends")
+        .unwrap();
+    assert_eq!(dividends["icon"], "TrendingUp");
 }
 
 #[tokio::test]

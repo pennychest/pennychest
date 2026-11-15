@@ -110,6 +110,9 @@ pub struct ExportedAccount {
     /// Left out when it's the default, GBP.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
+    /// A Lucide icon name, e.g. "ShoppingCart".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,10 +160,6 @@ pub enum AccountError {
          and try again."
     )]
     MissingOpeningBalances,
-    #[error(
-        "Cannot import accounts when accounts already exist. Use this on a fresh database only."
-    )]
-    NotEmpty,
     #[error(transparent)]
     Database(#[from] sqlx::Error),
 }
@@ -540,41 +539,55 @@ pub async fn export(db: &SqlitePool) -> Result<Vec<ExportedAccount>, sqlx::Error
                 .and_then(|id| paths.get(&id))
                 .map(|p| (*p).to_owned()),
             currency: (a.currency != DEFAULT_CURRENCY).then(|| a.currency.clone()),
+            icon: a.icon.clone(),
         })
         .collect())
 }
 
-/// Imports a chart of accounts into an install that has none yet. Returns how many were made.
+/// Imports a chart of accounts, leaving alone any account whose path exists already. Returns
+/// how many were made.
 pub async fn import(
     db: &SqlitePool,
     accounts: Vec<ExportedAccount>,
 ) -> Result<usize, AccountError> {
     let mut tx = db.begin().await?;
-    if has_accounts(&mut tx).await? {
-        return Err(AccountError::NotEmpty);
-    }
     let mut ids: HashMap<String, i64> = HashMap::new();
+    let mut created = 0;
     for exported in &accounts {
         if ids.contains_key(&exported.full_path) {
             return Err(AccountError::PathTaken);
         }
+        if let Some(existing) = find_by_path(&mut tx, &exported.full_path).await? {
+            ids.insert(existing.full_path, existing.id);
+            continue;
+        }
+        let parent_id = match &exported.parent_path {
+            None => None,
+            Some(path) => match ids.get(path) {
+                Some(id) => Some(*id),
+                None => Some(
+                    find_by_path(&mut tx, path)
+                        .await?
+                        .ok_or(AccountError::ParentNotFound)?
+                        .id,
+                ),
+            },
+        };
         let new = NewAccount {
             name: exported.name.clone(),
             full_path: exported.full_path.clone(),
-            parent_id: exported
-                .parent_path
-                .as_ref()
-                .and_then(|p| ids.get(p).copied()),
+            parent_id,
             kind: exported.kind,
             currency: exported.currency.clone().unwrap_or_else(default_currency),
             bank_identifier: None,
-            icon: None,
+            icon: exported.icon.clone(),
         };
         let account = insert(&mut tx, &new).await?;
         ids.insert(account.full_path, account.id);
+        created += 1;
     }
     tx.commit().await?;
-    Ok(accounts.len())
+    Ok(created)
 }
 
 /// Looking an account up by what a person or model calls it.
@@ -1027,10 +1040,22 @@ mod tests {
             .unwrap();
         assert_eq!(card_export.currency.as_deref(), Some("EUR"));
         assert_eq!(card_export.parent_path.as_deref(), Some("Liabilities"));
-        assert!(matches!(
-            import(&pool, exported.clone()).await,
-            Err(AccountError::NotEmpty)
-        ));
+        assert_eq!(card_export.icon.as_deref(), Some("CreditCard"));
+        // What's there already is left alone, and only the new account is made.
+        let mut with_new = exported.clone();
+        with_new.push(ExportedAccount {
+            name: "Fees".into(),
+            full_path: "Expenses:Fees".into(),
+            kind: AccountType::Expense,
+            parent_path: Some("Expenses".into()),
+            currency: None,
+            icon: Some("Receipt".into()),
+        });
+        assert_eq!(import(&pool, with_new).await.unwrap(), 1);
+        let fees = by_path(&pool, "Expenses:Fees").await;
+        assert_eq!(fees.parent_id, Some(by_path(&pool, "Expenses").await.id));
+        assert_eq!(fees.icon.as_deref(), Some("Receipt"));
+        assert_eq!(by_path(&pool, &card.full_path).await.currency, "EUR");
 
         let fresh = db::open_in_memory().await.unwrap();
         assert_eq!(import(&fresh, exported.clone()).await.unwrap(), 39);

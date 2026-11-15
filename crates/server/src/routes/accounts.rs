@@ -136,8 +136,7 @@ impl From<AccountError> for ApiError {
             | AccountError::ParentIsDescendant
             | AccountError::HasChildren
             | AccountError::InUse(_)
-            | AccountError::NoOpeningBalance
-            | AccountError::NotEmpty => ApiError::bad_request(message),
+            | AccountError::NoOpeningBalance => ApiError::bad_request(message),
             // The seed is missing a required account: shown as it is, since the user can fix it.
             AccountError::MissingOpeningBalances => {
                 ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message)

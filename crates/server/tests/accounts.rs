@@ -269,10 +269,10 @@ async fn export_and_import() {
         &json!({"name": "Bank", "full_path": "Assets:Bank", "type": "asset", "parent_path": "Assets"})
     );
 
-    let refused = app
+    let nothing_new = app
         .post("/api/accounts/import", exported.body.clone())
         .await;
-    refused.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(nothing_new.body, json!({"accounts_created": 0}));
 
     let mut fresh = TestApp::signed_in().await;
     let imported = fresh
