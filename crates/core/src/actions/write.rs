@@ -32,6 +32,12 @@ pub fn actions() -> Vec<Action> {
              attached."
         ),
         action!(
+            set_category_icon,
+            SetCategoryIconInput,
+            Scope::Organise,
+            "Set or remove a category's icon. A category without one shows its parent's."
+        ),
+        action!(
             create_rule,
             CreateRuleInput,
             Scope::Organise,
@@ -239,6 +245,61 @@ pub async fn rename_category(
             from_path: account.full_path.clone(),
             from_name: account.name.clone(),
             to_path: new_path,
+        },
+    ))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetCategoryIconInput {
+    /// The category to change (path or name).
+    category: String,
+    /// A Lucide icon name, e.g. "ShoppingCart". Left out or null, the icon is removed and the
+    /// category shows its parent's.
+    #[serde(default)]
+    #[schemars(length(min = 1, max = 60))]
+    icon: Option<String>,
+}
+
+impl Check for SetCategoryIconInput {
+    fn check(&self) -> Result<(), String> {
+        match &self.icon {
+            Some(icon) => length("icon", icon, 1, 60),
+            None => Ok(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct IconSet {
+    pub account_id: i64,
+    pub from: Option<String>,
+    pub to: Option<String>,
+}
+
+pub async fn set_category_icon(
+    db: &SqlitePool,
+    input: SetCategoryIconInput,
+) -> Result<Output, ActionError> {
+    let account = accounts::find_category(db, &input.category).await?;
+    sqlx::query("UPDATE accounts SET icon = ? WHERE id = ?")
+        .bind(&input.icon)
+        .bind(account.id)
+        .execute(db)
+        .await?;
+    let summary = match &input.icon {
+        Some(icon) => format!("Set the icon of category \"{}\" to {icon}", account.name),
+        None => format!("Removed the icon of category \"{}\"", account.name),
+    };
+    Ok(Output::new(json!({
+        "category": { "path": account.full_path, "name": account.name, "icon": input.icon },
+    }))
+    .with_change(
+        summary,
+        IconSet {
+            account_id: account.id,
+            from: account.icon,
+            to: input.icon,
         },
     ))
 }

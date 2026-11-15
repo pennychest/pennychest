@@ -27,6 +27,7 @@ const TOOL_LABELS: Record<string, string> = {
 const CHANGE_LABELS: Record<string, string> = {
   create_category: "Creating a category",
   rename_category: "Renaming a category",
+  set_category_icon: "Changing a category's icon",
   create_rule: "Creating a rule",
   set_budget: "Setting a budget",
   delete_budget: "Removing a budget",

@@ -134,7 +134,13 @@ pub async fn list_categories(
         .await?
         .into_iter()
         .filter(|a| kinds.contains(&a.kind))
-        .map(|a| json!({ "path": a.full_path, "name": a.name, "type": a.kind }))
+        .map(|a| {
+            let mut category = json!({ "path": a.full_path, "name": a.name, "type": a.kind });
+            if let Some(icon) = a.icon {
+                category["icon"] = json!(icon);
+            }
+            category
+        })
         .collect();
     Ok(Output::new(json!({ "categories": categories })))
 }
