@@ -2,7 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use chrono::NaiveDate;
 use pennychest_core::Money;
@@ -11,6 +11,7 @@ use pennychest_core::ledger::{
     TransactionUpdate,
 };
 use pennychest_core::lookups::CategorisationSource;
+use pennychest_core::tags;
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
@@ -23,9 +24,11 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list).post(create))
         .route("/count", get(count))
+        .route("/tags", get(list_tags))
         .route("/bulk-confirm", post(confirm_many))
         .route("/{id}", get(one).put(update).delete(delete))
         .route("/{id}/confirm", post(confirm))
+        .route("/{id}/tags", put(set_tags))
 }
 
 /// The filters and a page. Spelt out rather than `#[serde(flatten)]` of `Filters`, which
@@ -39,6 +42,8 @@ struct ListQuery {
     date_from: Option<NaiveDate>,
     date_to: Option<NaiveDate>,
     search: Option<String>,
+    /// Comma-separated: transactions with every one of them.
+    tags: Option<String>,
     #[serde(default = "first_page")]
     page: u32,
     #[serde(default = "default_per_page")]
@@ -73,6 +78,11 @@ async fn list(
         date_from: query.date_from,
         date_to: query.date_to,
         search: query.search,
+        tags: query
+            .tags
+            .as_deref()
+            .map(ledger::split_tags)
+            .unwrap_or_default(),
     };
     Ok(Json(
         ledger::list(&state.db, &filters, query.page, query.per_page).await?,
@@ -154,6 +164,7 @@ async fn create(
         currency: "GBP".into(),
         import_batch_id: None,
         import_metadata: None,
+        tags: Vec::new(),
         postings,
     };
     Ok((
@@ -214,6 +225,32 @@ async fn confirm_many(
     Ok(Json(Confirmed {
         confirmed: ledger::confirm_many(&state.db, &ids).await?,
     }))
+}
+
+/// Every tag in use, with how many transactions have it.
+async fn list_tags(State(state): State<AppState>) -> ApiResult<Json<Vec<tags::TagCount>>> {
+    Ok(Json(tags::list(&state.db).await?))
+}
+
+/// Gives the transaction exactly these tags.
+async fn set_tags(
+    State(state): State<AppState>,
+    PathParam(id): PathParam<i64>,
+    JsonBody(names): JsonBody<Vec<String>>,
+) -> ApiResult<Json<Transaction>> {
+    let names = tags::normalise_all(&names).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let mut tx = state.db.begin().await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM transactions WHERE id = ?)")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !exists {
+        return Err(LedgerError::NotFound.into());
+    }
+    tags::set(&mut tx, id, &names).await?;
+    tx.commit().await?;
+    one(State(state), PathParam(id)).await
 }
 
 impl From<LedgerError> for ApiError {

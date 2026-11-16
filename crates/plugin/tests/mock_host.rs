@@ -221,6 +221,7 @@ fn exporters_get_the_ledger_and_return_a_file() {
             status: "confirmed".into(),
             currency: "GBP".into(),
             postings: vec![posting(1, 1, "-12.5000"), posting(2, 2, "12.5000")],
+            tags: vec![],
         }],
         budgets: vec![],
     };

@@ -380,3 +380,57 @@ async fn bad_sources_and_statuses_are_refused_not_crashes() {
     let response = app.post("/api/transactions", body).await;
     assert_eq!(response.body, json!({"detail": "Account 999 not found"}));
 }
+
+#[tokio::test]
+async fn set_tags_and_filter_by_them() {
+    let mut app = TestApp::signed_in().await;
+    let (bank, groceries) = create_accounts(&mut app).await;
+    let tesco = app
+        .post(
+            "/api/transactions",
+            spend("2026-01-15", "Tesco", groceries, bank, "5"),
+        )
+        .await
+        .body["id"]
+        .as_i64()
+        .unwrap();
+    app.post(
+        "/api/transactions",
+        spend("2026-01-16", "Aldi", groceries, bank, "5"),
+    )
+    .await;
+
+    let set = app
+        .put(
+            &format!("/api/transactions/{tesco}/tags"),
+            json!(["Holiday", " Becca ", "becca"]),
+        )
+        .await;
+    set.assert_status(StatusCode::OK);
+    assert_eq!(set.body["tags"], json!(["Becca", "Holiday"]));
+
+    let found = app.get("/api/transactions?tags=becca,Holiday").await;
+    assert_eq!(found.body.as_array().unwrap().len(), 1);
+    assert_eq!(found.body[0]["id"], tesco);
+    let counted = app.get("/api/transactions/count?tags=Becca").await;
+    assert_eq!(counted.body["count"], 1);
+    let tags = app.get("/api/transactions/tags").await;
+    assert_eq!(
+        tags.body,
+        json!([
+            {"name": "Becca", "transaction_count": 1},
+            {"name": "Holiday", "transaction_count": 1},
+        ])
+    );
+
+    let cleared = app
+        .put(&format!("/api/transactions/{tesco}/tags"), json!(["Becca"]))
+        .await;
+    assert_eq!(cleared.body["tags"], json!(["Becca"]));
+    let bad = app
+        .put(&format!("/api/transactions/{tesco}/tags"), json!(["a,b"]))
+        .await;
+    bad.assert_status(StatusCode::BAD_REQUEST);
+    let missing = app.put("/api/transactions/999/tags", json!([])).await;
+    missing.assert_status(StatusCode::NOT_FOUND);
+}

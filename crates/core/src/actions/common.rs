@@ -8,6 +8,7 @@ use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
 use crate::Money;
 use crate::accounts::{self, Account, AccountType, FindError};
+use crate::tags;
 
 pub use crate::imports::batches::UNCATEGORISED_PATH;
 
@@ -65,6 +66,8 @@ pub struct Header {
 pub struct Loaded {
     pub header: Header,
     pub legs: Vec<Leg>,
+    /// Alphabetical.
+    pub tags: Vec<String>,
 }
 
 impl Loaded {
@@ -97,6 +100,7 @@ impl Loaded {
             account: join(self.money_side()),
             status: self.header.status.clone(),
             imported: self.header.import_batch_id.is_some(),
+            tags: self.tags.clone(),
         }
     }
 }
@@ -111,6 +115,8 @@ pub struct Described {
     pub account: Option<String>,
     pub status: String,
     pub imported: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 fn push_ids(query: &mut QueryBuilder<'_, Sqlite>, ids: &[i64]) {
@@ -141,6 +147,7 @@ pub async fn load(db: &SqlitePool, ids: &[i64]) -> Result<HashMap<i64, Loaded>, 
     push_ids(&mut query, ids);
     query.push(" ORDER BY p.id");
     let legs: Vec<Leg> = query.build_query_as().fetch_all(db).await?;
+    let mut tags = tags::for_transactions(db, ids).await?;
 
     let mut loaded: HashMap<i64, Loaded> = headers
         .into_iter()
@@ -151,6 +158,7 @@ pub async fn load(db: &SqlitePool, ids: &[i64]) -> Result<HashMap<i64, Loaded>, 
                 Loaded {
                     header,
                     legs: Vec::new(),
+                    tags: tags.remove(&id).unwrap_or_default(),
                 },
             )
         })

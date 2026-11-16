@@ -69,6 +69,7 @@ impl Record {
             raw_content: self.lines.join("\n"),
             line_number: i64::try_from(at).ok(),
             metadata: Default::default(),
+            tags: Vec::new(),
         })
     }
 }

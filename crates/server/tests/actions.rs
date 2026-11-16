@@ -12,11 +12,12 @@ use fixtures::{act, imported, ledger, ok, postings, spending, statement_row};
 use pennychest_core::actions::{self, ActionError, Caller, Scope, Source};
 use serde_json::{Value, json};
 
-const READ: [&str; 14] = [
+const READ: [&str; 15] = [
     "list_categories",
     "list_accounts",
     "spending_summary",
     "list_transactions",
+    "list_tags",
     "list_rules",
     "get_budgets",
     "list_card_taps",
@@ -36,13 +37,15 @@ const ORGANISE: [&str; 6] = [
     "set_budget",
     "delete_budget",
 ];
-const TRANSACTIONS: [&str; 6] = [
+const TRANSACTIONS: [&str; 8] = [
     "recategorise_transactions",
     "add_transaction",
     "add_transfer",
     "edit_transaction",
     "delete_transactions",
     "mark_reviewed",
+    "tag_transactions",
+    "untag_transactions",
 ];
 
 fn set(names: &[&[&str]]) -> HashSet<String> {
@@ -1213,4 +1216,84 @@ async fn mark_reviewed() {
     );
     let pending = ok(&mut app, "list_transactions", json!({"status": "pending"})).await;
     assert_eq!(pending["total"], 0);
+}
+
+#[tokio::test]
+async fn tag_filter_and_untag_transactions() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let s = spending(&mut app, &ids).await;
+    let statement = imported(&mut app, &ids).await;
+
+    let tagged = ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [statement, s["pizza"], 999], "tags": [" Becca ", "becca"]}),
+    )
+    .await;
+    assert_eq!(
+        tagged["tagged"],
+        json!([
+            {"transaction_id": statement, "tags": ["Becca"]},
+            {"transaction_id": s["pizza"], "tags": ["Becca"]},
+        ])
+    );
+    assert_eq!(
+        tagged["skipped"],
+        json!([{"id": 999, "reason": "not found"}])
+    );
+    assert_eq!(tagged["change"]["summary"], "Tagged 2 transactions: Becca");
+
+    let again = ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [statement], "tags": ["BECCA", "Holiday"]}),
+    )
+    .await;
+    assert_eq!(
+        again["tagged"],
+        json!([{"transaction_id": statement, "tags": ["Holiday"]}])
+    );
+
+    let tags = ok(&mut app, "list_tags", json!({})).await;
+    assert_eq!(
+        tags["tags"],
+        json!([
+            {"name": "Becca", "transaction_count": 2},
+            {"name": "Holiday", "transaction_count": 1},
+        ])
+    );
+    let both = ok(
+        &mut app,
+        "list_transactions",
+        json!({"tags": ["becca", "holiday"]}),
+    )
+    .await;
+    assert_eq!(ids_of(&both), [statement]);
+    assert_eq!(both["transactions"][0]["tags"], json!(["Becca", "Holiday"]));
+
+    let untagged = ok(
+        &mut app,
+        "untag_transactions",
+        json!({"transaction_ids": [statement, s["pizza"]], "tags": ["holiday"]}),
+    )
+    .await;
+    assert_eq!(
+        untagged["untagged"],
+        json!([{"transaction_id": statement, "tags": ["Holiday"]}])
+    );
+    assert_eq!(
+        untagged["skipped"],
+        json!([{"id": s["pizza"], "reason": "not tagged"}])
+    );
+    let tags = ok(&mut app, "list_tags", json!({})).await;
+    assert_eq!(tags["tags"].as_array().unwrap().len(), 1);
+
+    let bad = act(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [statement], "tags": ["a,b"]}),
+    )
+    .await;
+    bad.assert_status(StatusCode::BAD_REQUEST);
 }

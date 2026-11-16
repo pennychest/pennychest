@@ -14,7 +14,7 @@ An agent can always look things up. It can change things only if you allow it, s
 |---|---|
 | `list_accounts` | Your bank accounts, cards and other accounts |
 | `list_categories` | Your spending and income categories |
-| `list_transactions` | Find transactions, with their categories, accounts and review status |
+| `list_transactions` | Find transactions, with their categories, accounts, review status and tags |
 | `list_rules` | Your categorisation rules |
 | `list_card_taps` | [Card taps](card-taps.md), including spending that isn't on a statement yet |
 | `get_budgets` | Budgets and how much is left of each |
@@ -26,6 +26,7 @@ An agent can always look things up. It can change things only if you allow it, s
 | `recurring_payments` | Active subscriptions and bills, with what each costs a year |
 | `unusual_charges` | Charges that look unusual, and bills that went up |
 | `savings_opportunities` | An overview of where you could save money |
+| `list_tags` | Your tags, with how many transactions have each |
 
 ### Change categories, rules and budgets
 
@@ -47,6 +48,8 @@ An agent can always look things up. It can change things only if you allow it, s
 | `edit_transaction` | Change a transaction's description, date, amount, category or account |
 | `recategorise_transactions` | Move transactions to another category |
 | `mark_reviewed` | Mark imported transactions as reviewed |
+| `tag_transactions` | Add tags to transactions |
+| `untag_transactions` | Remove tags from transactions |
 | `delete_transactions` | Delete transactions |
 
 `delete_transactions` and `delete_budget` are marked as destructive, so clients that support it ask you before running them. Every change an agent makes is listed under **Settings → Changes made by AI** and can be undone.

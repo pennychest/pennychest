@@ -120,6 +120,17 @@ pub async fn load_ledger(db: &SqlitePool, today: NaiveDate) -> Result<Ledger, sq
     .fetch_all(db)
     .await?;
 
+    let tags: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT tt.transaction_id, t.name FROM transaction_tags tt JOIN tags t ON t.id = tt.tag_id
+         ORDER BY t.name COLLATE NOCASE",
+    )
+    .fetch_all(db)
+    .await?;
+    let mut tags_of: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+    for (id, name) in tags {
+        tags_of.entry(id).or_default().push(name);
+    }
+
     let mut by_transaction: std::collections::HashMap<i64, Vec<LedgerPosting>> =
         std::collections::HashMap::new();
     for p in postings {
@@ -156,6 +167,7 @@ pub async fn load_ledger(db: &SqlitePool, today: NaiveDate) -> Result<Ledger, sq
                     status,
                     currency,
                     postings: by_transaction.remove(&id).unwrap_or_default(),
+                    tags: tags_of.remove(&id).unwrap_or_default(),
                 },
             )
             .collect(),

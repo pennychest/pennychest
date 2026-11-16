@@ -15,6 +15,7 @@ const FIELDS: { field: CsvField; label: string }[] = [
   { field: "amount", label: "Amount" },
   { field: "money_out", label: "Money out" },
   { field: "money_in", label: "Money in" },
+  { field: "tags", label: "Tags" },
 ];
 
 const NONE = "none";
@@ -141,6 +142,7 @@ export function CsvMapping({
 
       <p className="text-xs text-muted-foreground">
         Use Amount when one column holds both money in and out, or Money out and Money in when they're separate.
+        Tags is optional: a column of tags, separated by commas or semicolons.
       </p>
       {missing.length > 0 && (
         <p className="text-xs text-warning">Choose the columns for the {missing.join(" and ")}.</p>

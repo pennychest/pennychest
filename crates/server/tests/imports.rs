@@ -57,6 +57,7 @@ impl Importer for FakeStatementImporter {
             raw_content: "TESCO".into(),
             line_number: None,
             metadata: serde_json::Map::new(),
+            tags: vec!["Becca".into()],
         }])
     }
 }
@@ -212,6 +213,11 @@ async fn upload_records_the_statement_summary() {
         )
     );
     assert_eq!(closing, Some("-14".parse().unwrap()));
+    let batch = response.body["batch_id"].as_i64().unwrap();
+    let imported = app
+        .get(&format!("/api/transactions?batch_id={batch}"))
+        .await;
+    assert_eq!(imported.body[0]["tags"], json!(["Becca"]));
 }
 
 #[tokio::test]
