@@ -37,7 +37,7 @@ const ORGANISE: [&str; 6] = [
     "set_budget",
     "delete_budget",
 ];
-const TRANSACTIONS: [&str; 8] = [
+const TRANSACTIONS: [&str; 10] = [
     "recategorise_transactions",
     "add_transaction",
     "add_transfer",
@@ -46,6 +46,8 @@ const TRANSACTIONS: [&str; 8] = [
     "mark_reviewed",
     "tag_transactions",
     "untag_transactions",
+    "rename_tag",
+    "delete_tag",
 ];
 
 fn set(names: &[&[&str]]) -> HashSet<String> {
@@ -1296,4 +1298,36 @@ async fn tag_filter_and_untag_transactions() {
     )
     .await;
     bad.assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn rename_and_delete_tags_that_arent_there() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let s = spending(&mut app, &ids).await;
+    ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [s["pizza"]], "tags": ["Becca"]}),
+    )
+    .await;
+    let missing = act(&mut app, "delete_tag", json!({"tag": "Nope"})).await;
+    assert_eq!(
+        missing.body["detail"],
+        "There is no tag 'Nope'. list_tags gives the tags in use."
+    );
+    let same = act(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "becca", "new_name": "Becca"}),
+    )
+    .await;
+    assert_eq!(same.body["detail"], "The tag is already called 'Becca'.");
+    let bad = act(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "Becca", "new_name": "a,b"}),
+    )
+    .await;
+    assert!(bad.status.is_client_error(), "{}", bad.body);
 }

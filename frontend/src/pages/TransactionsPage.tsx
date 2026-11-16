@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { transactionsApi, accountsApi, importsApi, lookupsApi, type Transaction } from "../api/client";
+import { transactionsApi, accountsApi, importsApi, lookupsApi, type TagCount, type Transaction } from "../api/client";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { AccountIcon } from "./AccountsPage";
 import { Button } from "../components/ui/button";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { cn, formatCurrency, formatDate, formatAccountPath } from "../lib/utils";
-import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, CheckCheck, CreditCard, Hash, Plus, Tag, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, CheckCheck, CreditCard, Hash, Pencil, Plus, Settings2, Tag, Trash2, X } from "lucide-react";
 
 type DatePreset = "all" | "this-month" | "last-month" | "last-3-months" | "this-year" | "custom";
 
@@ -77,6 +77,7 @@ export function TransactionsPage() {
   const [categorising, setCategorising] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
   const [tagging, setTagging] = useState<Transaction | null>(null);
+  const [managingTags, setManagingTags] = useState(false);
 
   const range = datePreset === "custom" ? { from: customFrom || undefined, to: customTo || undefined } : presetRange(datePreset);
 
@@ -243,6 +244,18 @@ export function TransactionsPage() {
               </SelectContent>
             </Select>
           )}
+          {tags.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 -ml-2"
+              onClick={() => setManagingTags(true)}
+              title="Manage tags"
+              aria-label="Manage tags"
+            >
+              <Settings2 className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          )}
           {tagFilter.map((tag) => (
             <button
               key={tag}
@@ -406,6 +419,21 @@ export function TransactionsPage() {
           transaction={tagging}
           suggestions={tags.map((t) => t.name)}
           onClose={() => setTagging(null)}
+        />
+      )}
+
+      {managingTags && (
+        <ManageTagsDialog
+          tags={tags}
+          onChanged={(from, to) => {
+            // Keep filtering by a renamed tag, and stop filtering by a deleted one
+            const rest = tagFilter.filter((t) => t.toLowerCase() !== from.toLowerCase());
+            if (rest.length === tagFilter.length) return;
+            const merged = to && !rest.some((t) => t.toLowerCase() === to.toLowerCase());
+            setTagFilter(merged ? [...rest, to] : rest);
+            setPage(1);
+          }}
+          onClose={() => setManagingTags(false)}
         />
       )}
 
@@ -699,6 +727,142 @@ function TagsDialog({
           </Button>
           <Button onClick={save} disabled={saveMutation.isPending}>
             Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Every tag, to rename or delete. Renaming one to another's name merges the two.
+function ManageTagsDialog({
+  tags,
+  onChanged,
+  onClose,
+}: {
+  tags: TagCount[];
+  // `to` is the tag's new name, or null if it was deleted
+  onChanged: (from: string, to: string | null) => void;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [text, setText] = useState("");
+
+  const done = (from: string, to: string | null) => {
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    onChanged(from, to);
+    setRenaming(null);
+    setDeleting(null);
+  };
+  const renameMutation = useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) => transactionsApi.renameTag(from, to),
+    onSuccess: (renamed, { from }) => done(from, renamed.to),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) => transactionsApi.deleteTag(name),
+    onSuccess: (_, name) => done(name, null),
+  });
+  const error = renameMutation.error ?? deleteMutation.error;
+  const transactions = (n: number) => `${n} transaction${n === 1 ? "" : "s"}`;
+
+  const name = text.replace(/,/g, " ").trim().replace(/\s+/g, " ");
+  // Another tag with the name being typed, which this one would be merged into
+  const mergeInto = tags.find(
+    (t) => t.name.toLowerCase() === name.toLowerCase() && t.name.toLowerCase() !== renaming?.toLowerCase(),
+  );
+  const rename = () => {
+    if (!renaming || !name || name === renaming) return setRenaming(null);
+    renameMutation.mutate({ from: renaming, to: name });
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage tags</DialogTitle>
+          <DialogDescription>
+            Rename a tag to another tag's name to merge the two. Deleting a tag takes it off its transactions, and leaves the transactions alone.
+          </DialogDescription>
+        </DialogHeader>
+        {tags.length === 0 && <p className="text-sm text-muted-foreground">No tags left.</p>}
+        <ul className="max-h-[50vh] divide-y overflow-y-auto">
+          {tags.map((tag) => (
+            <li key={tag.name} className="py-2">
+              {renaming === tag.name ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      autoFocus
+                      value={text}
+                      maxLength={50}
+                      aria-label={`New name for ${tag.name}`}
+                      onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") rename();
+                        if (e.key === "Escape") { e.stopPropagation(); setRenaming(null); }
+                      }}
+                    />
+                    <Button size="sm" onClick={rename} disabled={!name || renameMutation.isPending}>
+                      {mergeInto ? "Merge" : "Rename"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setRenaming(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                  {mergeInto && (
+                    <p className="text-xs text-muted-foreground">
+                      {mergeInto.name} is already a tag. {transactions(tag.transaction_count)} tagged {tag.name} will be tagged {mergeInto.name} instead.
+                    </p>
+                  )}
+                </div>
+              ) : deleting === tag.name ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 min-w-0 text-sm">
+                    Take <span className="font-medium">{tag.name}</span> off {transactions(tag.transaction_count)}?
+                  </span>
+                  <Button size="sm" variant="destructive" onClick={() => deleteMutation.mutate(tag.name)} disabled={deleteMutation.isPending}>
+                    Delete
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setDeleting(null)}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 min-w-0 truncate text-sm">{tag.name}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{transactions(tag.transaction_count)}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => { setRenaming(tag.name); setDeleting(null); setText(tag.name); }}
+                    title="Rename or merge"
+                    aria-label={`Rename ${tag.name}`}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => { setDeleting(tag.name); setRenaming(null); }}
+                    title="Delete"
+                    aria-label={`Delete ${tag.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+        {error && <p className="text-sm text-destructive">{error.message}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Done
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{QueryBuilder, SqliteConnection, SqlitePool};
 
 pub const MAX_LENGTH: usize = 50;
@@ -137,6 +137,113 @@ pub async fn set(
         .await?;
     add(db, transaction_id, names).await?;
     forget_unused(db).await
+}
+
+/// The tag with this name, ignoring case: its ID and how it's spelt.
+pub async fn find(
+    db: &mut SqliteConnection,
+    name: &str,
+) -> Result<Option<(i64, String)>, sqlx::Error> {
+    forget_unused(db).await?;
+    sqlx::query_as("SELECT id, name FROM tags WHERE name = ?")
+        .bind(name)
+        .fetch_optional(db)
+        .await
+}
+
+async fn transactions_with(db: &mut SqliteConnection, id: i64) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT transaction_id FROM transaction_tags WHERE tag_id = ? ORDER BY transaction_id",
+    )
+    .bind(id)
+    .fetch_all(db)
+    .await
+}
+
+/// What renaming a tag did, which is also what's needed to undo it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Renamed {
+    /// The tag as it was spelt.
+    pub from: String,
+    /// The tag its transactions have now, as it's spelt.
+    pub to: String,
+    /// Whether `to` was already another tag, so the two became one.
+    pub merged: bool,
+    /// The transactions that had `from`.
+    pub transaction_ids: Vec<i64>,
+    /// Of those, the ones that had `to` as well.
+    pub had_both: Vec<i64>,
+}
+
+/// Renames a tag on every transaction that has it. If `to` (already normalised) is another
+/// tag, the two are merged into that one. `None` if there's no tag `from`.
+pub async fn rename(
+    db: &mut SqliteConnection,
+    from: &str,
+    to: &str,
+) -> Result<Option<Renamed>, sqlx::Error> {
+    let Some((id, spelt)) = find(db, from).await? else {
+        return Ok(None);
+    };
+    let transaction_ids = transactions_with(db, id).await?;
+    let other = find(db, to).await?.filter(|(other, _)| *other != id);
+    let Some((other, other_spelt)) = other else {
+        sqlx::query("UPDATE tags SET name = ? WHERE id = ?")
+            .bind(to)
+            .bind(id)
+            .execute(db)
+            .await?;
+        return Ok(Some(Renamed {
+            from: spelt,
+            to: to.to_owned(),
+            merged: false,
+            transaction_ids,
+            had_both: Vec::new(),
+        }));
+    };
+    let had_both = sqlx::query_scalar(
+        "SELECT transaction_id FROM transaction_tags WHERE tag_id = ? AND transaction_id IN
+         (SELECT transaction_id FROM transaction_tags WHERE tag_id = ?) ORDER BY transaction_id",
+    )
+    .bind(id)
+    .bind(other)
+    .fetch_all(&mut *db)
+    .await?;
+    sqlx::query("UPDATE OR IGNORE transaction_tags SET tag_id = ? WHERE tag_id = ?")
+        .bind(other)
+        .bind(id)
+        .execute(&mut *db)
+        .await?;
+    sqlx::query("DELETE FROM transaction_tags WHERE tag_id = ?")
+        .bind(id)
+        .execute(&mut *db)
+        .await?;
+    forget_unused(db).await?;
+    Ok(Some(Renamed {
+        from: spelt,
+        to: other_spelt,
+        merged: true,
+        transaction_ids,
+        had_both,
+    }))
+}
+
+/// Takes a tag off every transaction that has it. Returns the tag as it was spelt and those
+/// transactions, or `None` if there's no such tag.
+pub async fn delete(
+    db: &mut SqliteConnection,
+    name: &str,
+) -> Result<Option<(String, Vec<i64>)>, sqlx::Error> {
+    let Some((id, spelt)) = find(db, name).await? else {
+        return Ok(None);
+    };
+    let transaction_ids = transactions_with(db, id).await?;
+    sqlx::query("DELETE FROM transaction_tags WHERE tag_id = ?")
+        .bind(id)
+        .execute(&mut *db)
+        .await?;
+    forget_unused(db).await?;
+    Ok(Some((spelt, transaction_ids)))
 }
 
 /// Each transaction's tags, in alphabetical order. Transactions without any aren't in the map.
@@ -289,5 +396,66 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(kept, 1, "unused tags are forgotten");
+    }
+
+    #[tokio::test]
+    async fn renames_merges_and_deletes() {
+        let pool = db::open_in_memory().await.unwrap();
+        let (one, two) = (transaction(&pool).await, transaction(&pool).await);
+        let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let mut db = pool.acquire().await.unwrap();
+        add(&mut db, one, &names(&["Rebecca Stievenard", "Becca"]))
+            .await
+            .unwrap();
+        add(&mut db, two, &names(&["Rebecca Stievenard"]))
+            .await
+            .unwrap();
+
+        assert_eq!(rename(&mut db, "Nope", "Becca").await.unwrap(), None);
+        let renamed = rename(&mut db, "rebecca stievenard", "Rebecca Bailey")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(renamed.from, "Rebecca Stievenard");
+        assert!(!renamed.merged);
+        assert_eq!(renamed.transaction_ids, [one, two]);
+        let recased = rename(&mut db, "Rebecca Bailey", "rebecca bailey")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (recased.to.as_str(), recased.merged),
+            ("rebecca bailey", false)
+        );
+
+        let merged = rename(&mut db, "rebecca bailey", "becca")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            merged,
+            Renamed {
+                from: "rebecca bailey".into(),
+                to: "Becca".into(),
+                merged: true,
+                transaction_ids: vec![one, two],
+                had_both: vec![one],
+            }
+        );
+        drop(db);
+        assert_eq!(
+            list(&pool).await.unwrap(),
+            [TagCount {
+                name: "Becca".into(),
+                transaction_count: 2
+            }]
+        );
+
+        let mut db = pool.acquire().await.unwrap();
+        assert_eq!(
+            delete(&mut db, "BECCA").await.unwrap(),
+            Some(("Becca".into(), vec![one, two]))
+        );
+        assert_eq!(delete(&mut db, "Becca").await.unwrap(), None);
     }
 }

@@ -25,6 +25,8 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list).post(create))
         .route("/count", get(count))
         .route("/tags", get(list_tags))
+        .route("/tags/rename", post(rename_tag))
+        .route("/tags/delete", post(delete_tag))
         .route("/bulk-confirm", post(confirm_many))
         .route("/{id}", get(one).put(update).delete(delete))
         .route("/{id}/confirm", post(confirm))
@@ -230,6 +232,53 @@ async fn confirm_many(
 /// Every tag in use, with how many transactions have it.
 async fn list_tags(State(state): State<AppState>) -> ApiResult<Json<Vec<tags::TagCount>>> {
     Ok(Json(tags::list(&state.db).await?))
+}
+
+fn tag_name(name: &str) -> Result<String, ApiError> {
+    tags::normalise(name).map_err(|e| ApiError::bad_request(e.to_string()))
+}
+
+fn no_tag(name: &str) -> ApiError {
+    ApiError::not_found(format!("There is no tag '{name}'"))
+}
+
+#[derive(Deserialize)]
+struct RenameTag {
+    from: String,
+    to: String,
+}
+
+/// Renames a tag on every transaction that has it, merging it into `to` if that's another tag.
+async fn rename_tag(
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<RenameTag>,
+) -> ApiResult<Json<tags::Renamed>> {
+    let (from, to) = (tag_name(&body.from)?, tag_name(&body.to)?);
+    let mut tx = state.db.begin().await?;
+    let renamed = tags::rename(&mut tx, &from, &to)
+        .await?
+        .ok_or_else(|| no_tag(&from))?;
+    tx.commit().await?;
+    Ok(Json(renamed))
+}
+
+#[derive(Deserialize)]
+struct DeleteTag {
+    name: String,
+}
+
+/// Takes a tag off every transaction that has it.
+async fn delete_tag(
+    State(state): State<AppState>,
+    JsonBody(body): JsonBody<DeleteTag>,
+) -> ApiResult<StatusCode> {
+    let name = tag_name(&body.name)?;
+    let mut tx = state.db.begin().await?;
+    tags::delete(&mut tx, &name)
+        .await?
+        .ok_or_else(|| no_tag(&name))?;
+    tx.commit().await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Gives the transaction exactly these tags.

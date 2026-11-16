@@ -50,9 +50,11 @@ An agent can always look things up. It can change things only if you allow it, s
 | `mark_reviewed` | Mark imported transactions as reviewed |
 | `tag_transactions` | Add tags to transactions |
 | `untag_transactions` | Remove tags from transactions |
+| `rename_tag` | Rename a tag everywhere, or merge it into another tag |
+| `delete_tag` | Take a tag off every transaction that has it |
 | `delete_transactions` | Delete transactions |
 
-`delete_transactions` and `delete_budget` are marked as destructive, so clients that support it ask you before running them. Every change an agent makes is listed under **Settings → Changes made by AI** and can be undone.
+`delete_transactions`, `delete_tag` and `delete_budget` are marked as destructive, so clients that support it ask you before running them. Every change an agent makes is listed under **Settings → Changes made by AI** and can be undone.
 
 `recurring_payments` and `unusual_charges` use the labels and scores from the *Flagging subscriptions and unusual charges* [task](ai-integration.md#tasks). Without it, they have less to go on.
 

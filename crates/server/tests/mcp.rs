@@ -292,7 +292,10 @@ async fn destructive_tools_are_marked() {
         .filter(|t| t["annotations"]["destructiveHint"] == true)
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    assert_eq!(destructive, ["delete_budget", "delete_transactions"]);
+    assert_eq!(
+        destructive,
+        ["delete_budget", "delete_transactions", "delete_tag"]
+    );
 }
 
 #[tokio::test]
