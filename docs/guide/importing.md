@@ -8,12 +8,13 @@ Every bank lays out its CSV export differently. When you add one, the **Columns*
 
 - **Date** and **Description**
 - **Amount**, when one column holds both money in and out, or **Money out** and **Money in** when they're separate. Money out counts as outgoing whether the bank writes it as `12.50` or `-12.50`.
+- **Tags**, optionally: a column of [tags](categorisation.md#tags) for each transaction, separated by commas or semicolons.
 
 Each column is chosen, in order:
 
 1. **From a template** you saved for files laid out the same way.
 2. **By name.** Common names such as *Date*, *Description*, *Amount* or *Paid out* are recognised.
-3. **By AI**, if *Reading CSV columns* is on. A decision model says how sure it is, and anything under 70% is highlighted for you to check. If the task runs [when you ask](ai-integration.md#automatically-or-when-you-ask), press **Suggest with AI**.
+3. **By AI**, if *Reading CSV columns* is on. A decision model says how sure it is, and anything under 70% is highlighted for you to check. If the task runs [when you ask](ai-integration.md#automatically-or-when-you-ask), press **Suggest with AI**. AI never chooses the Tags column.
 
 You can change any column, and the file can't be imported until it has a date, a description and an amount.
 

@@ -253,7 +253,7 @@ export interface StatementDetection {
 }
 
 // What a CSV column can hold
-export type CsvField = "date" | "description" | "amount" | "money_out" | "money_in";
+export type CsvField = "date" | "description" | "amount" | "money_out" | "money_in" | "tags";
 
 // Which column (counting from 0) holds each field
 export type CsvColumns = Partial<Record<CsvField, number>>;

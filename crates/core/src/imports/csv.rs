@@ -9,6 +9,7 @@ use rust_decimal::Decimal;
 
 use super::{ImportedRow, Importer, handles_extension};
 use crate::Money;
+use crate::tags;
 
 pub const NAME: &str = "csv";
 
@@ -39,6 +40,7 @@ const DEBIT_COLUMNS: &[&str] = &[
     "withdrawals",
 ];
 const CREDIT_COLUMNS: &[&str] = &["credit", "credit amount", "money in", "paid in", "deposits"];
+const TAG_COLUMNS: &[&str] = &["tags", "tag", "labels"];
 
 /// Tried in this order, so day-first wins over month-first.
 const DATE_FORMATS: &[&str] = &[
@@ -53,6 +55,7 @@ pub const FIELDS: &[(&str, &str)] = &[
     ("amount", "amount"),
     ("money_out", "money out"),
     ("money_in", "money in"),
+    ("tags", "tags"),
 ];
 
 /// Which column (counting from 0) holds each field.
@@ -97,6 +100,7 @@ pub fn columns_by_name(headers: &[String]) -> Columns {
         ("amount", AMOUNT_COLUMNS),
         ("money_out", DEBIT_COLUMNS),
         ("money_in", CREDIT_COLUMNS),
+        ("tags", TAG_COLUMNS),
     ]
     .into_iter()
     .filter_map(|(field, names)| find_column(headers, names).map(|c| (field.to_owned(), c)))
@@ -145,7 +149,8 @@ fn parse_amount(value: &str) -> Option<Money> {
 
 /// Reads rows with `columns` saying which column holds each field: "date", "description",
 /// and "amount" or one or both of "money_out" and "money_in". Rows without a readable date,
-/// description or amount, or with a zero amount, are skipped.
+/// description or amount, or with a zero amount, are skipped. A "tags" column holds each row's
+/// tags, separated by commas or semicolons.
 pub fn parse_mapped(content: &[u8], columns: &Columns) -> Result<Vec<ImportedRow>, String> {
     let missing = missing_fields(columns);
     if !missing.is_empty() {
@@ -160,6 +165,7 @@ pub fn parse_mapped(content: &[u8], columns: &Columns) -> Result<Vec<ImportedRow
     let amount_col = columns.get("amount");
     let out_col = columns.get("money_out");
     let in_col = columns.get("money_in");
+    let tags_col = columns.get("tags");
 
     let mut rows = Vec::new();
     // The header is line 1
@@ -194,6 +200,16 @@ pub fn parse_mapped(content: &[u8], columns: &Columns) -> Result<Vec<ImportedRow
         let Some(amount) = amount.filter(|a| !a.is_zero()) else {
             continue;
         };
+        let cell_tags: Vec<&str> = tags_col
+            .and_then(|&c| row.get(c))
+            .map(|cell| cell.split([',', ';']).collect())
+            .unwrap_or_default();
+        let cell_tags: Vec<&str> = cell_tags
+            .into_iter()
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        let tags =
+            tags::normalise_all(&cell_tags).map_err(|e| format!("Line {line_number}: {e}"))?;
         rows.push(ImportedRow {
             date,
             description: description.to_owned(),
@@ -201,7 +217,7 @@ pub fn parse_mapped(content: &[u8], columns: &Columns) -> Result<Vec<ImportedRow
             raw_content: row.join(","),
             line_number: Some(line_number),
             metadata: serde_json::Map::new(),
-            tags: Vec::new(),
+            tags,
         });
     }
     Ok(rows)
@@ -340,6 +356,28 @@ mod tests {
         let rows =
             parse_mapped(b"Posted,Who,Out,In\n20/09/2026,TESCO,-12.50,\n", &mapping).unwrap();
         assert_eq!(rows[0].amount, m("-12.5"));
+    }
+
+    #[test]
+    fn reads_tags_from_a_column() {
+        let content = "Date,Description,Amount,Tags\n\
+                       20/09/2026,TESCO,-12.50,\"Becca, Holiday\"\n\
+                       21/09/2026,BOOTS,-3.00,becca; ;Becca\n\
+                       22/09/2026,COOP,-1.00,\n";
+        let rows = CsvImporter.parse(content.as_bytes()).unwrap();
+        let tags: Vec<&[String]> = rows.iter().map(|r| r.tags.as_slice()).collect();
+        assert_eq!(tags[0], ["Becca", "Holiday"]);
+        assert_eq!(tags[1], ["becca"]);
+        assert!(tags[2].is_empty());
+
+        let long = format!(
+            "Date,Description,Amount,Tags\n20/09/2026,TESCO,-1,{}\n",
+            "x".repeat(51)
+        );
+        assert_eq!(
+            CsvImporter.parse(long.as_bytes()).unwrap_err(),
+            "Line 2: A tag can't be longer than 50 characters."
+        );
     }
 
     #[test]
