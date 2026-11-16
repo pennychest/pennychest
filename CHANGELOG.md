@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.9.0 (2026-11-16)
+
+### Added
+
+- ✨ Tag transactions, filter by tags, and let plugins and AI assistants tag them (#16)
+
 ## v0.8.0 (2026-11-15)
 
 ### Added
