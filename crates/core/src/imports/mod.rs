@@ -29,6 +29,8 @@ pub struct ImportedRow {
     pub raw_content: String,
     pub line_number: Option<i64>,
     pub metadata: serde_json::Map<String, serde_json::Value>,
+    /// Normalised, as `tags::normalise_all` gives them.
+    pub tags: Vec<String>,
 }
 
 /// What an importer can read from a statement before importing it, so the import page can

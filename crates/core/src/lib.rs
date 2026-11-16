@@ -21,6 +21,7 @@ pub mod plugins;
 pub mod reports;
 pub mod rules;
 pub mod settings;
+pub mod tags;
 pub mod taps;
 
 pub use money::Money;

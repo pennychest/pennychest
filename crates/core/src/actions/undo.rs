@@ -6,11 +6,12 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sqlx::{QueryBuilder, Sqlite, SqliteConnection};
 
-use super::ledger::{Added, Deleted, Edited, Reviewed, update_posting};
+use super::ledger::{Added, Deleted, Edited, Reviewed, TagsChanged, update_posting};
 use super::write::{
     self, BudgetDeleted, BudgetSet, CreatedCategory, CreatedRule, IconSet, Recategorised, Renamed,
     stored_amount,
 };
+use crate::tags;
 
 #[derive(Debug, thiserror::Error)]
 pub enum UndoError {
@@ -32,7 +33,7 @@ fn read<T: DeserializeOwned>(data: Value) -> Result<T, UndoError> {
 
 /// The actions `reverse` undoes: every action that changes data, as a test checks.
 #[cfg(test)]
-pub const UNDOABLE: [&str; 12] = [
+pub const UNDOABLE: [&str; 14] = [
     "create_category",
     "rename_category",
     "set_category_icon",
@@ -45,6 +46,8 @@ pub const UNDOABLE: [&str; 12] = [
     "edit_transaction",
     "delete_transactions",
     "mark_reviewed",
+    "tag_transactions",
+    "untag_transactions",
 ];
 
 pub async fn reverse(
@@ -64,6 +67,8 @@ pub async fn reverse(
         "edit_transaction" => edit(db, read(data)?).await,
         "delete_transactions" => delete_transactions(db, read(data)?).await,
         "mark_reviewed" => mark_reviewed(db, read(data)?).await,
+        "tag_transactions" => retag(db, read(data)?, false).await,
+        "untag_transactions" => retag(db, read(data)?, true).await,
         _ => Err(refuse(format!("Changes made by {action} can't be undone."))),
     }
 }
@@ -418,6 +423,7 @@ async fn delete_transactions(db: &mut SqliteConnection, data: Deleted) -> Result
         )
         .await?;
         relink(db, "card_taps", "transaction_id", &snap.tap_ids, snap.id).await?;
+        tags::add(db, snap.id, &snap.tags).await?;
         relink(
             db,
             "transactions",
@@ -437,5 +443,31 @@ async fn mark_reviewed(db: &mut SqliteConnection, data: Reviewed) -> Result<(), 
     let mut query = QueryBuilder::new("UPDATE transactions SET status = 'pending' WHERE id IN (");
     push_ids(&mut query, &data.transaction_ids);
     query.build().execute(db).await?;
+    Ok(())
+}
+
+/// Puts back tags that were removed (`adding`), or takes off tags that were added. Transactions
+/// deleted since are left alone.
+async fn retag(
+    db: &mut SqliteConnection,
+    data: TagsChanged,
+    adding: bool,
+) -> Result<(), UndoError> {
+    for of in &data.transactions {
+        if !exists(
+            db,
+            "SELECT 1 FROM transactions WHERE id = ?",
+            of.transaction_id,
+        )
+        .await?
+        {
+            continue;
+        }
+        if adding {
+            tags::add(db, of.transaction_id, &of.tags).await?;
+        } else {
+            tags::remove(db, of.transaction_id, &of.tags).await?;
+        }
+    }
     Ok(())
 }

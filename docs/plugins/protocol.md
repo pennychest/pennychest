@@ -168,7 +168,8 @@ The transactions in a statement.
       "amount": "-12.50",
       "raw_content": "D20/09/2026\nT-12.50\nPTESCO STORES 2041",
       "line_number": 2,
-      "metadata": {"reference": "A1B2"}
+      "metadata": {"reference": "A1B2"},
+      "tags": ["Becca"]
     }
   ]
 }
@@ -182,6 +183,7 @@ The transactions in a statement.
 | `raw_content` | The row as the statement had it, kept as the record of what the bank reported. |
 | `line_number` | Optional: where the row is in the file, for messages about it. |
 | `metadata` | Optional: anything else worth keeping with the row. |
+| `tags` | Optional: tags to give the transaction, such as the cardholder who made a card payment. Each is at most 50 characters, with no commas. |
 
 A file with no transactions, or one the importer can't read, is an error with code `-32000`
 saying what's wrong (e.g. `"Line 4: \"31/02/2026\" isn't a date."`).
@@ -249,7 +251,8 @@ The ledger in the exporter's format.
 - `accounts` come parents first. `type` is `"asset"`, `"liability"`, `"income"`, `"expense"`
   or `"equity"`, and `full_path` is colon-separated, e.g. `"Expenses:Food:Groceries"`.
 - `transactions` come oldest first. Their postings sum to zero. `status` is `"confirmed"`, or
-  `"pending"` for imported transactions still to be reviewed.
+  `"pending"` for imported transactions still to be reviewed. `tags`, alphabetical, is left
+  out when a transaction has none.
 - A budget covers its account and everything below it. `period` is `"monthly"` or
   `"annual"`.
 

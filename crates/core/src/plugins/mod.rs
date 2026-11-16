@@ -28,6 +28,7 @@ use serde::Serialize;
 use crate::Money;
 use crate::export::{Exporter, Exporters};
 use crate::imports::{ImportedRow, Importer, Importers, StatementInfo};
+use crate::tags;
 pub use run::RunError;
 
 /// Something that went wrong running a plugin.
@@ -197,12 +198,17 @@ impl Importer for PluginImporter {
         rows.into_iter()
             .enumerate()
             .map(|(i, row)| {
+                let line = row.line_number.map_or(i as i64 + 1, |n| n);
                 let amount = Money::from_decimal(row.amount).map_err(|_| {
-                    let line = row.line_number.map_or(i as i64 + 1, |n| n);
                     format!(
                         "The {plugin} plugin read an amount PennyChest can't keep exactly on \
                          line {line}: {}.",
                         row.amount
+                    )
+                })?;
+                let tags = tags::normalise_all(&row.tags).map_err(|e| {
+                    format!(
+                        "The {plugin} plugin gave a tag PennyChest can't use on line {line}: {e}"
                     )
                 })?;
                 Ok(ImportedRow {
@@ -212,6 +218,7 @@ impl Importer for PluginImporter {
                     raw_content: row.raw_content,
                     line_number: row.line_number,
                     metadata: row.metadata,
+                    tags,
                 })
             })
             .collect()

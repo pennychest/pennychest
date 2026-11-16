@@ -45,6 +45,10 @@ You can also use OpenAI's Decisions API, another decision model, or a language m
 
 [Card taps](card-taps.md) are payments your phone sends to PennyChest as you make them. They're categorised the moment they arrive, by your rules, then the learned model, then AI if *Categorising card taps* is on. When the statement arrives, each tap passes its category on to the line it matches.
 
+## Tags
+
+Tags are labels you add yourself, separate from categories, such as who paid or which trip a payment was for. A transaction can have any number. Press **#** on a transaction to edit its tags, and filter the **Transactions** page by one or more of them. An [import plugin](plugins.md) can also tag what it imports, and an [AI agent](mcp.md) can tag transactions when you ask it to. Nothing suggests tags automatically.
+
 ## How well it works
 
 All of these results come from the same dataset. It is **993 real transactions** from Jersey, categorised by hand: seven months (January–July 2026), five accounts and 24 categories. The categories are very uneven: Food (240) and Parking (219) hold almost half the lines, and many categories have only a handful. That's why rare categories and new shops are the hard part.

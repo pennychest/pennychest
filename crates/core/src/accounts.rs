@@ -503,6 +503,7 @@ pub async fn set_opening_balance(
                 currency: account.currency.clone(),
                 import_batch_id: None,
                 import_metadata: None,
+                tags: Vec::new(),
                 postings,
             };
             ledger::insert(&mut tx, &new)

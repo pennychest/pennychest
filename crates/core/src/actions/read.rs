@@ -11,6 +11,7 @@ use super::{Action, ActionError, Check, Output, Scope, in_range, parse, schema};
 use crate::accounts::{self, AccountType};
 use crate::budgets;
 use crate::reports::{self, GroupBy, Grouping, Kind};
+use crate::tags;
 use crate::{Money, lookups::MatchType};
 
 pub fn actions() -> Vec<Action> {
@@ -44,8 +45,16 @@ pub fn actions() -> Vec<Action> {
             Scope::Read,
             "Find transactions, newest first. Each has its category (or categories), the \
              amount categorised (positive for spending, negative for income or refunds), the \
-             bank account or card it was paid from or into, and whether it has been reviewed. \
-             Returns the total number of matches so results can be paged with offset."
+             bank account or card it was paid from or into, whether it has been reviewed, and \
+             any tags. Returns the total number of matches so results can be paged with offset."
+        ),
+        action!(
+            list_tags,
+            Nothing,
+            Scope::Read,
+            "List the tags on the user's transactions, with how many transactions have each. \
+             Tags are the user's own labels, such as who paid or which trip a payment was for, \
+             separate from categories."
         ),
         action!(
             list_rules,
@@ -246,6 +255,9 @@ pub struct ListTransactionsInput {
     /// Only transactions on this bank account or card (path or name).
     #[serde(default)]
     account: Option<String>,
+    /// Only transactions with every one of these tags (case doesn't matter).
+    #[serde(default)]
+    tags: Vec<String>,
     /// "pending" means imported but not yet reviewed.
     #[serde(default)]
     status: StatusFilter,
@@ -286,6 +298,7 @@ struct Filters {
     within: Vec<String>,
     min_amount: Option<Money>,
     max_amount: Option<Money>,
+    tags: Vec<String>,
 }
 
 impl Filters {
@@ -306,6 +319,7 @@ impl Filters {
         if let Some(status) = self.status {
             query.push(" AND t.status = ").push_bind(status);
         }
+        tags::push_filter(query, &self.tags);
         if let Some(category) = self.exact_category {
             query
                 .push(" AND t.id IN (SELECT transaction_id FROM postings WHERE account_id = ")
@@ -358,6 +372,7 @@ pub async fn list_transactions(
         within: Vec::new(),
         min_amount: input.min_amount,
         max_amount: input.max_amount,
+        tags: input.tags,
     };
     if let Some(category) = input.category {
         let category = accounts::find_category(db, &category).await?;
@@ -396,6 +411,10 @@ pub async fn list_transactions(
         "offset": input.offset,
         "transactions": transactions,
     })))
+}
+
+pub async fn list_tags(db: &SqlitePool, _: Nothing) -> Result<Output, ActionError> {
+    Ok(Output::new(json!({ "tags": tags::list(db).await? })))
 }
 
 pub async fn list_rules(db: &SqlitePool, _: Nothing) -> Result<Output, ActionError> {

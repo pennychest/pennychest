@@ -113,6 +113,8 @@ mod tests {
                 "postings",
                 "raw_import_rows",
                 "rules",
+                "tags",
+                "transaction_tags",
                 "transactions",
                 "wallet_cards",
             ]

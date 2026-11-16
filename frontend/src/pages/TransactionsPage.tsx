@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { cn, formatCurrency, formatDate, formatAccountPath } from "../lib/utils";
-import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, CheckCheck, CreditCard, Plus, Tag, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, CheckCheck, CreditCard, Hash, Plus, Tag, Trash2, X } from "lucide-react";
 
 type DatePreset = "all" | "this-month" | "last-month" | "last-3-months" | "this-year" | "custom";
 
@@ -66,6 +66,7 @@ export function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [pickingFilterCategory, setPickingFilterCategory] = useState(false);
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -75,6 +76,7 @@ export function TransactionsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [categorising, setCategorising] = useState<Transaction | null>(null);
   const [deleting, setDeleting] = useState<Transaction | null>(null);
+  const [tagging, setTagging] = useState<Transaction | null>(null);
 
   const range = datePreset === "custom" ? { from: customFrom || undefined, to: customTo || undefined } : presetRange(datePreset);
 
@@ -84,6 +86,7 @@ export function TransactionsPage() {
     category_id: categoryId ?? undefined,
     date_from: range.from,
     date_to: range.to,
+    tags: tagFilter.length ? tagFilter : undefined,
   };
 
   const { data: transactions = [], isLoading } = useQuery({
@@ -100,6 +103,17 @@ export function TransactionsPage() {
 
   // Deleting the last few transactions can leave you past the end
   if (pageCount !== undefined && page > pageCount) setPage(pageCount);
+
+  // Under the "transactions" key so tagging refreshes it
+  const { data: tags = [] } = useQuery({
+    queryKey: ["transactions", "tags"],
+    queryFn: transactionsApi.tags,
+  });
+
+  const filterByTag = (tag: string) => {
+    if (!tagFilter.some((t) => t.toLowerCase() === tag.toLowerCase())) setTagFilter([...tagFilter, tag]);
+    setPage(1);
+  };
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -212,6 +226,36 @@ export function TransactionsPage() {
               </button>
             )}
           </div>
+          {tags.length > 0 && (
+            <Select value="" onValueChange={filterByTag}>
+              <SelectTrigger className="w-[130px] justify-start [&>span]:flex-1 [&>span]:text-left">
+                <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Any tag" />
+              </SelectTrigger>
+              <SelectContent>
+                {tags
+                  .filter((t) => !tagFilter.some((f) => f.toLowerCase() === t.name.toLowerCase()))
+                  .map((t) => (
+                    <SelectItem key={t.name} value={t.name}>
+                      {t.name} <span className="text-muted-foreground">({t.transaction_count})</span>
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          )}
+          {tagFilter.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => { setTagFilter(tagFilter.filter((t) => t !== tag)); setPage(1); }}
+              className="inline-flex h-9 items-center gap-1 rounded-md border border-input px-3 text-sm shadow-sm hover:bg-accent"
+              aria-label={`Stop filtering by ${tag}`}
+            >
+              <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+              {tag}
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ))}
           <Select value={datePreset} onValueChange={(v) => { setDatePreset(v as DatePreset); setPage(1); }}>
             <SelectTrigger className="w-[160px] justify-start [&>span]:flex-1 [&>span]:text-left">
               <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -266,7 +310,7 @@ export function TransactionsPage() {
       ) : transactions.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            {search || statusFilter || categoryId || range.from || range.to
+            {search || statusFilter || categoryId || tagFilter.length || range.from || range.to
               ? "No transactions match these filters."
               : "No transactions found. Create your first transaction or import a bank statement."}
           </CardContent>
@@ -282,6 +326,8 @@ export function TransactionsPage() {
               onConfirm={() => confirmMutation.mutate(txn.id)}
               onDelete={() => setDeleting(txn)}
               onCategorise={() => setCategorising(txn)}
+              onTag={() => setTagging(txn)}
+              onFilterByTag={filterByTag}
             />
           ))}
         </div>
@@ -352,6 +398,14 @@ export function TransactionsPage() {
           })()}
           onPick={(accountId) => categoriseMutation.mutate({ id: categorising.id, accountId })}
           isPending={categoriseMutation.isPending}
+        />
+      )}
+
+      {tagging && (
+        <TagsDialog
+          transaction={tagging}
+          suggestions={tags.map((t) => t.name)}
+          onClose={() => setTagging(null)}
         />
       )}
 
@@ -442,6 +496,8 @@ function TransactionRow({
   onConfirm,
   onDelete,
   onCategorise,
+  onTag,
+  onFilterByTag,
 }: {
   transaction: Transaction;
   selected: boolean;
@@ -449,6 +505,8 @@ function TransactionRow({
   onConfirm: () => void;
   onDelete: () => void;
   onCategorise: () => void;
+  onTag: () => void;
+  onFilterByTag: (tag: string) => void;
 }) {
   const summary = summarise(transaction);
   const pending = transaction.status === "pending";
@@ -508,12 +566,27 @@ function TransactionRow({
               <span className="truncate">{lastPart(summary.account)}</span>
             </span>
           )}
+          {transaction.tags.map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onFilterByTag(tag)}
+              className="inline-flex items-center gap-0.5 rounded-md bg-secondary px-1.5 text-xs text-secondary-foreground hover:text-foreground"
+              title={`Show transactions tagged ${tag}`}
+            >
+              <Hash className="h-3 w-3 shrink-0" />
+              {tag}
+            </button>
+          ))}
           {pending && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
               pending
             </Badge>
           )}
           <span className="ml-auto flex items-center gap-0.5">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onTag} title="Edit tags" aria-label="Edit tags">
+              <Hash className="h-4 w-4 text-muted-foreground" />
+            </Button>
             {pending && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onConfirm} title="Confirm" aria-label="Confirm">
                 <Check className="h-4 w-4" />
@@ -526,6 +599,110 @@ function TransactionRow({
         </div>
       </div>
     </div>
+  );
+}
+
+// Tags are typed in: Enter or a comma adds one, and tags already in use are suggested.
+function TagsDialog({
+  transaction,
+  suggestions,
+  onClose,
+}: {
+  transaction: Transaction;
+  suggestions: string[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [tags, setTags] = useState(transaction.tags);
+  const [text, setText] = useState("");
+
+  const saveMutation = useMutation({
+    mutationFn: (names: string[]) => transactionsApi.setTags(transaction.id, names),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      onClose();
+    },
+  });
+
+  const has = (name: string) => tags.some((t) => t.toLowerCase() === name.toLowerCase());
+
+  function add(name: string) {
+    const tag = name.replace(/,/g, " ").trim().replace(/\s+/g, " ");
+    if (!tag) return;
+    // Keep the spelling of a tag that's already in use
+    const known = suggestions.find((s) => s.toLowerCase() === tag.toLowerCase());
+    if (!has(tag)) setTags([...tags, known ?? tag]);
+    setText("");
+  }
+
+  function save() {
+    const pending = text.trim();
+    saveMutation.mutate(pending && !has(pending) ? [...tags, pending] : tags);
+  }
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Tags</DialogTitle>
+          <DialogDescription>
+            {transaction.description} — {formatCurrency(summarise(transaction).amount)} on {formatDate(transaction.date)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <span key={tag} className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-sm">
+                  <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => setTags(tags.filter((t) => t !== tag))}
+                    className="hover:text-destructive"
+                    aria-label={`Remove ${tag}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <Input
+            autoFocus
+            placeholder="Add a tag…"
+            value={text}
+            list="tag-suggestions"
+            maxLength={50}
+            onChange={(e) => {
+              if (e.target.value.includes(",")) add(e.target.value);
+              else setText(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (text.trim()) add(text);
+                else save();
+              }
+            }}
+          />
+          <datalist id="tag-suggestions">
+            {suggestions.filter((s) => !has(s)).map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </div>
+        {saveMutation.error && <p className="text-sm text-destructive">{saveMutation.error.message}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saveMutation.isPending}>
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

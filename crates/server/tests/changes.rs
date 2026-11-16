@@ -383,6 +383,12 @@ async fn undoing_a_delete_puts_transactions_back_with_their_links() {
     .fetch_one(&app.db)
     .await
     .unwrap();
+    ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [statement], "tags": ["Becca"]}),
+    )
+    .await;
     let before = ok(&mut app, "list_transactions", json!({})).await["transactions"].clone();
     let postings_before = postings(&mut app, statement).await;
 
@@ -422,4 +428,48 @@ async fn undo_marking_reviewed() {
     let pending = ok(&mut app, "list_transactions", json!({"status": "pending"})).await;
     assert_eq!(pending["transactions"][0]["id"], s["pending"]);
     assert_eq!(pending["total"], 1);
+}
+
+#[tokio::test]
+async fn undo_tagging_and_untagging() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let s = spending(&mut app, &ids).await;
+    let tags_of = |list: &Value| list["transactions"][0]["tags"].clone();
+    let pizza = json!({"search": "pizza"});
+    ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [s["pizza"]], "tags": ["Becca"]}),
+    )
+    .await;
+    let tagged = ok(
+        &mut app,
+        "tag_transactions",
+        json!({"transaction_ids": [s["pizza"]], "tags": ["Becca", "Holiday"]}),
+    )
+    .await;
+    assert!(
+        tagged["change"]["summary"]
+            .as_str()
+            .unwrap()
+            .ends_with(": Holiday")
+    );
+    undone(&mut app, &tagged).await;
+    let after = ok(&mut app, "list_transactions", pizza.clone()).await;
+    assert_eq!(tags_of(&after), json!(["Becca"]), "only what it added");
+
+    let untagged = ok(
+        &mut app,
+        "untag_transactions",
+        json!({"transaction_ids": [s["pizza"]], "tags": ["becca"]}),
+    )
+    .await;
+    assert_eq!(
+        tags_of(&ok(&mut app, "list_transactions", pizza.clone()).await),
+        Value::Null
+    );
+    undone(&mut app, &untagged).await;
+    let after = ok(&mut app, "list_transactions", pizza).await;
+    assert_eq!(tags_of(&after), json!(["Becca"]));
 }

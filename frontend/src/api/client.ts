@@ -82,6 +82,12 @@ export interface Transaction {
   import_batch_id: number | null;
   created_at: string;
   postings: Posting[];
+  tags: string[];
+}
+
+export interface TagCount {
+  name: string;
+  transaction_count: number;
 }
 
 export interface Rule {
@@ -322,6 +328,8 @@ export interface TransactionFilters {
   date_from?: string;
   date_to?: string;
   search?: string;
+  // Transactions with every one of them
+  tags?: string[];
   page?: number;
   per_page?: number;
 }
@@ -352,6 +360,10 @@ export const transactionsApi = {
     request<void>(`/transactions/${id}`, { method: "DELETE" }),
   confirm: (id: number) =>
     request<Transaction>(`/transactions/${id}/confirm`, { method: "POST" }),
+  // Every tag in use
+  tags: () => request<TagCount[]>("/transactions/tags"),
+  setTags: (id: number, tags: string[]) =>
+    request<Transaction>(`/transactions/${id}/tags`, { method: "PUT", body: JSON.stringify(tags) }),
   bulkConfirm: (ids: number[]) =>
     request<{ confirmed: number }>("/transactions/bulk-confirm", {
       method: "POST",

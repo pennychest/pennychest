@@ -22,6 +22,7 @@ const TOOL_LABELS: Record<string, string> = {
   compare_periods: "Comparing periods",
   transactions_digest: "Reading your transactions",
   unusual_charges: "Checking for unusual charges",
+  list_tags: "Checking your tags",
 };
 
 const CHANGE_LABELS: Record<string, string> = {
@@ -37,6 +38,8 @@ const CHANGE_LABELS: Record<string, string> = {
   edit_transaction: "Editing a transaction",
   delete_transactions: "Deleting transactions",
   mark_reviewed: "Marking transactions reviewed",
+  tag_transactions: "Tagging transactions",
+  untag_transactions: "Removing tags",
 };
 
 // Data a chat change can touch, refreshed after an undo.

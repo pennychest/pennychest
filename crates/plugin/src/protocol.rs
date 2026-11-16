@@ -154,6 +154,9 @@ pub struct Row {
     /// Anything else worth keeping, stored with the import.
     #[serde(default, skip_serializing_if = "Map::is_empty")]
     pub metadata: Map<String, Value>,
+    /// Tags to give the transaction, such as the cardholder who made a card payment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -223,6 +226,9 @@ pub struct LedgerTransaction {
     pub currency: String,
     /// In the order they were made; they sum to zero.
     pub postings: Vec<LedgerPosting>,
+    /// Alphabetical.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

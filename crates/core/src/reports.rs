@@ -555,6 +555,7 @@ mod tests {
                     currency: "GBP".into(),
                     import_batch_id: None,
                     import_metadata: None,
+                    tags: Vec::new(),
                     postings: Balanced::new(postings).unwrap(),
                 },
             )

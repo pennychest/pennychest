@@ -19,6 +19,7 @@ use crate::Money;
 use crate::accounts;
 use crate::ledger::{self, Balanced, NewPosting, NewTransaction, Status};
 use crate::lookups::CategorisationSource;
+use crate::tags;
 
 pub fn actions() -> Vec<Action> {
     vec![
@@ -56,6 +57,21 @@ pub fn actions() -> Vec<Action> {
              true) came from the user's bank statement, so only delete one when the user asks \
              for it specifically, for example a duplicate; to fix how one is categorised, \
              change its category instead."
+        ),
+        action!(
+            tag_transactions,
+            TagsInput,
+            Scope::Transactions,
+            "Add tags to transactions, keeping the tags they already have. Tags are the user's \
+             own labels, such as who paid or which trip a payment was for, and a transaction \
+             can have any number. Only tag transactions when the user asks: reuse a tag from \
+             list_tags where one fits rather than spelling a new one differently."
+        ),
+        action!(
+            untag_transactions,
+            TagsInput,
+            Scope::Transactions,
+            "Remove tags from transactions. A tag no transaction has any more disappears."
         ),
         action!(
             mark_reviewed,
@@ -106,6 +122,8 @@ pub struct Snapshot {
     pub import_metadata: Option<Value>,
     pub transfer_peer_id: Option<i64>,
     pub postings: Vec<PostingSnapshot>,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub raw_row_ids: Vec<i64>,
     pub tap_ids: Vec<i64>,
     pub peer_of: Vec<i64>,
@@ -146,6 +164,7 @@ async fn snapshot(db: &SqlitePool, txn: &Loaded) -> Result<Snapshot, sqlx::Error
                 rule_id: l.rule_id,
             })
             .collect(),
+        tags: txn.tags.clone(),
         raw_row_ids: ids("SELECT id FROM raw_import_rows WHERE transaction_id = ? ORDER BY id")
             .await?,
         tap_ids: ids("SELECT id FROM card_taps WHERE transaction_id = ? ORDER BY id").await?,
@@ -181,6 +200,7 @@ async fn add(
         currency: currency.to_owned(),
         import_batch_id: None,
         import_metadata: None,
+        tags: Vec::new(),
         postings: Balanced::new(postings).map_err(|e| ActionError::Invalid(e.to_string()))?,
     };
     let mut conn = db.acquire().await?;
@@ -570,6 +590,128 @@ pub async fn mark_reviewed(
         ),
         Reviewed {
             transaction_ids: reviewed,
+        },
+    ))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TagsInput {
+    /// IDs from list_transactions.
+    #[schemars(length(min = 1, max = 200))]
+    transaction_ids: Vec<i64>,
+    /// e.g. ["Becca"]. Case doesn't matter; a new tag is kept as it's spelt here.
+    #[schemars(length(min = 1, max = 20))]
+    tags: Vec<String>,
+}
+
+impl Check for TagsInput {
+    fn check(&self) -> Result<(), String> {
+        items("transaction_ids", &self.transaction_ids, 1, 200)?;
+        items("tags", &self.tags, 1, 20)?;
+        tags::normalise_all(&self.tags)
+            .map(|_| ())
+            .map_err(|e| format!("tags: {e}"))
+    }
+}
+
+/// The tags each transaction gained or lost, for undoing it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TagsChanged {
+    pub transactions: Vec<TagsOf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TagsOf {
+    pub transaction_id: i64,
+    pub tags: Vec<String>,
+}
+
+/// Adds or removes the tags on each transaction found.
+async fn change_tags(
+    db: &SqlitePool,
+    input: TagsInput,
+    adding: bool,
+) -> Result<(Vec<Value>, Vec<TagsOf>, Vec<String>), ActionError> {
+    let names =
+        tags::normalise_all(&input.tags).map_err(|e| ActionError::invalid(e.to_string()))?;
+    let ids = unique(&input.transaction_ids);
+    let loaded = common::load(db, &ids).await?;
+    let (mut skipped, mut changed, mut spelt) = (Vec::new(), Vec::new(), Vec::new());
+    let mut tx = db.begin().await?;
+    for id in ids {
+        if !loaded.contains_key(&id) {
+            skipped.push(json!({ "id": id, "reason": "not found" }));
+            continue;
+        }
+        let done = if adding {
+            tags::add(&mut tx, id, &names).await?
+        } else {
+            tags::remove(&mut tx, id, &names).await?
+        };
+        if done.is_empty() {
+            let reason = if adding {
+                "already tagged"
+            } else {
+                "not tagged"
+            };
+            skipped.push(json!({ "id": id, "reason": reason }));
+            continue;
+        }
+        for name in &done {
+            if !spelt.iter().any(|s: &String| s.eq_ignore_ascii_case(name)) {
+                spelt.push(name.clone());
+            }
+        }
+        changed.push(TagsOf {
+            transaction_id: id,
+            tags: done,
+        });
+    }
+    tx.commit().await?;
+    Ok((skipped, changed, spelt))
+}
+
+fn tag_summary(verb: &str, changed: &[TagsOf], tags: &[String], loaded: Option<&Loaded>) -> String {
+    let which = tags.join(", ");
+    let what = match (changed, loaded) {
+        ([_], Some(txn)) => format!("\"{}\" ({})", txn.header.description, txn.header.date),
+        _ => count_of(changed.len(), "transaction"),
+    };
+    format!("{verb} {what}: {which}")
+}
+
+pub async fn tag_transactions(db: &SqlitePool, input: TagsInput) -> Result<Output, ActionError> {
+    let (skipped, changed, spelt) = change_tags(db, input, true).await?;
+    finish_tags(db, "Tagged", skipped, changed, spelt).await
+}
+
+pub async fn untag_transactions(db: &SqlitePool, input: TagsInput) -> Result<Output, ActionError> {
+    let (skipped, changed, spelt) = change_tags(db, input, false).await?;
+    finish_tags(db, "Untagged", skipped, changed, spelt).await
+}
+
+async fn finish_tags(
+    db: &SqlitePool,
+    verb: &str,
+    skipped: Vec<Value>,
+    changed: Vec<TagsOf>,
+    spelt: Vec<String>,
+) -> Result<Output, ActionError> {
+    let key = verb.to_lowercase();
+    let output = Output::new(json!({ key: changed, "skipped": skipped }));
+    if changed.is_empty() {
+        return Ok(output);
+    }
+    let one = match changed.as_slice() {
+        [only] => load_one(db, only.transaction_id).await?,
+        _ => None,
+    };
+    let summary = tag_summary(verb, &changed, &spelt, one.as_ref());
+    Ok(output.with_change(
+        summary,
+        TagsChanged {
+            transactions: changed,
         },
     ))
 }

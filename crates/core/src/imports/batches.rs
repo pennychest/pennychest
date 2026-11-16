@@ -365,6 +365,7 @@ async fn record(
                 import_batch_id: Some(batch_id),
                 import_metadata: (!row.metadata.is_empty())
                     .then(|| serde_json::Value::Object(row.metadata.clone())),
+                tags: row.tags.clone(),
                 postings,
             },
         )

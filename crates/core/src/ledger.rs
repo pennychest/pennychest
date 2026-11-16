@@ -13,6 +13,7 @@ use sqlx::{QueryBuilder, Sqlite, SqliteConnection, SqlitePool};
 
 use crate::Money;
 use crate::lookups::CategorisationSource;
+use crate::tags;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
@@ -70,6 +71,8 @@ pub struct NewTransaction {
     pub currency: String,
     pub import_batch_id: Option<i64>,
     pub import_metadata: Option<serde_json::Value>,
+    /// Normalised, as `tags::normalise_all` gives them.
+    pub tags: Vec<String>,
     pub postings: Balanced,
 }
 
@@ -84,6 +87,8 @@ pub struct Transaction {
     #[serde(serialize_with = "iso_timestamp")]
     pub created_at: String,
     pub postings: Vec<Posting>,
+    /// Alphabetical.
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, sqlx::FromRow)]
@@ -169,6 +174,7 @@ pub async fn insert(db: &mut SqliteConnection, new: &NewTransaction) -> Result<i
         .execute(&mut *db)
         .await?;
     }
+    tags::add(db, id, &new.tags).await?;
     Ok(id)
 }
 
@@ -219,6 +225,25 @@ pub struct Filters {
     pub date_to: Option<NaiveDate>,
     /// Text the description contains, ignoring case.
     pub search: Option<String>,
+    /// Transactions with every one of these tags.
+    #[serde(default, deserialize_with = "comma_separated")]
+    pub tags: Vec<String>,
+}
+
+/// Tags written "Becca,Holiday", as a query string gives them.
+pub fn split_tags(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn comma_separated<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    Ok(Option::<String>::deserialize(d)?
+        .as_deref()
+        .map(split_tags)
+        .unwrap_or_default())
 }
 
 async fn push_filters<'a>(
@@ -251,6 +276,7 @@ async fn push_filters<'a>(
     if let Some(batch_id) = filters.batch_id.filter(|id| *id != 0) {
         query.push(" AND t.import_batch_id = ").push_bind(batch_id);
     }
+    tags::push_filter(query, &filters.tags);
     if let Some(category_id) = filters.category_id.filter(|id| *id != 0) {
         let path: Option<String> =
             sqlx::query_scalar("SELECT full_path FROM accounts WHERE id = ?")
@@ -318,6 +344,8 @@ async fn with_postings(
     }
     query.push(") ORDER BY p.id");
     let postings: Vec<Posting> = query.build_query_as().fetch_all(db).await?;
+    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+    let mut tags = tags::for_transactions(db, &ids).await?;
     let mut by_transaction: HashMap<i64, Vec<Posting>> = HashMap::new();
     for posting in postings {
         by_transaction
@@ -329,6 +357,7 @@ async fn with_postings(
         .into_iter()
         .map(|row| Transaction {
             postings: by_transaction.remove(&row.id).unwrap_or_default(),
+            tags: tags.remove(&row.id).unwrap_or_default(),
             id: row.id,
             date: row.date,
             description: row.description,
@@ -473,6 +502,7 @@ mod tests {
             currency: "GBP".into(),
             import_batch_id: None,
             import_metadata: None,
+            tags: Vec::new(),
             postings: Balanced::new(vec![
                 posting(food, amount),
                 posting(bank, &format!("-{amount}")),
@@ -592,6 +622,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keeps_and_filters_by_tags() {
+        let (pool, bank, food) = setup().await;
+        let mut tagged = spend(bank, food, "2026-01-10", "Tesco", "5");
+        tagged.tags = vec!["Holiday".into(), "Becca".into()];
+        let created = create(&pool, &tagged).await.unwrap();
+        assert_eq!(created.tags, ["Becca", "Holiday"]);
+        create(&pool, &spend(bank, food, "2026-01-11", "Aldi", "5"))
+            .await
+            .unwrap();
+
+        let becca = Filters {
+            tags: split_tags("becca, Holiday"),
+            ..Filters::default()
+        };
+        let found = list(&pool, &becca, 1, 50).await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, created.id);
+        let neither = Filters {
+            tags: split_tags("Becca,Work"),
+            ..Filters::default()
+        };
+        assert_eq!(count(&pool, &neither).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
     async fn updates_confirms_and_deletes() {
         let (pool, bank, food) = setup().await;
         let first = create(&pool, &spend(bank, food, "2026-01-10", "a", "1"))
@@ -650,6 +705,7 @@ mod tests {
             import_batch_id: None,
             created_at: "2026-10-14 08:48:10".into(),
             postings: vec![],
+            tags: vec![],
         })
         .unwrap();
         assert_eq!(json["created_at"], "2026-10-14T08:48:10");

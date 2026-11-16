@@ -201,6 +201,7 @@ pub fn parse_mapped(content: &[u8], columns: &Columns) -> Result<Vec<ImportedRow
             raw_content: row.join(","),
             line_number: Some(line_number),
             metadata: serde_json::Map::new(),
+            tags: Vec::new(),
         });
     }
     Ok(rows)
