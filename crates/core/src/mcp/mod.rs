@@ -13,7 +13,7 @@ use sqlx::SqlitePool;
 use crate::actions::{self, ActionError, Caller, Scope, Source};
 
 pub const SUPPORTED_VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
-const DESTRUCTIVE: [&str; 2] = ["delete_transactions", "delete_budget"];
+const DESTRUCTIVE: [&str; 3] = ["delete_transactions", "delete_budget", "delete_tag"];
 
 fn instructions(scopes: &[Scope]) -> String {
     let allowed: Vec<String> = scopes

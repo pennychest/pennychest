@@ -362,6 +362,15 @@ export const transactionsApi = {
     request<Transaction>(`/transactions/${id}/confirm`, { method: "POST" }),
   // Every tag in use
   tags: () => request<TagCount[]>("/transactions/tags"),
+  // Renames a tag everywhere; if `to` is another tag, the two are merged
+  renameTag: (from: string, to: string) =>
+    request<{ from: string; to: string; merged: boolean }>("/transactions/tags/rename", {
+      method: "POST",
+      body: JSON.stringify({ from, to }),
+    }),
+  // Takes a tag off every transaction
+  deleteTag: (name: string) =>
+    request<void>("/transactions/tags/delete", { method: "POST", body: JSON.stringify({ name }) }),
   setTags: (id: number, tags: string[]) =>
     request<Transaction>(`/transactions/${id}/tags`, { method: "PUT", body: JSON.stringify(tags) }),
   bulkConfirm: (ids: number[]) =>

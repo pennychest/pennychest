@@ -47,7 +47,7 @@ You can also use OpenAI's Decisions API, another decision model, or a language m
 
 ## Tags
 
-Tags are labels you add yourself, separate from categories, such as who paid or which trip a payment was for. A transaction can have any number. Press **#** on a transaction to edit its tags, and filter the **Transactions** page by one or more of them. An [import plugin](plugins.md) can also tag what it imports, and an [AI agent](mcp.md) can tag transactions when you ask it to. Nothing suggests tags automatically.
+Tags are labels you add yourself, separate from categories, such as who paid or which trip a payment was for. A transaction can have any number. Press **#** on a transaction to edit its tags, and filter the **Transactions** page by one or more of them. The cog beside the tag filter opens **Manage tags**, where you rename or delete a tag everywhere at once; renaming a tag to another tag's name merges the two. An [import plugin](plugins.md) can also tag what it imports, and an [AI agent](mcp.md) can tag transactions when you ask it to. Nothing suggests tags automatically.
 
 ## How well it works
 

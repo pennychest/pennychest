@@ -434,3 +434,83 @@ async fn set_tags_and_filter_by_them() {
     let missing = app.put("/api/transactions/999/tags", json!([])).await;
     missing.assert_status(StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn rename_merge_and_delete_tags() {
+    let mut app = TestApp::signed_in().await;
+    let (bank, groceries) = create_accounts(&mut app).await;
+    let mut ids = Vec::new();
+    for (shop, tags) in [("Tesco", json!(["Bex", "Becca"])), ("Aldi", json!(["Bex"]))] {
+        let id = app
+            .post(
+                "/api/transactions",
+                spend("2026-01-15", shop, groceries, bank, "5"),
+            )
+            .await
+            .body["id"]
+            .as_i64()
+            .unwrap();
+        app.put(&format!("/api/transactions/{id}/tags"), tags).await;
+        ids.push(id);
+    }
+    let names = |body: &serde_json::Value| -> Vec<(String, i64)> {
+        body.as_array()
+            .unwrap()
+            .iter()
+            .map(|t| {
+                (
+                    t["name"].as_str().unwrap().to_owned(),
+                    t["transaction_count"].as_i64().unwrap(),
+                )
+            })
+            .collect()
+    };
+
+    let renamed = app
+        .post(
+            "/api/transactions/tags/rename",
+            json!({"from": "bex", "to": " Rebecca "}),
+        )
+        .await;
+    renamed.assert_status(StatusCode::OK);
+    assert_eq!(renamed.body["to"], "Rebecca");
+    assert_eq!(renamed.body["merged"], false);
+
+    let merged = app
+        .post(
+            "/api/transactions/tags/rename",
+            json!({"from": "Rebecca", "to": "becca"}),
+        )
+        .await;
+    assert_eq!(merged.body["to"], "Becca");
+    assert_eq!(merged.body["merged"], true);
+    let tags = app.get("/api/transactions/tags").await;
+    assert_eq!(names(&tags.body), [("Becca".to_owned(), 2)]);
+
+    let missing = app
+        .post(
+            "/api/transactions/tags/rename",
+            json!({"from": "Nope", "to": "x"}),
+        )
+        .await;
+    missing.assert_status(StatusCode::NOT_FOUND);
+    let bad = app
+        .post(
+            "/api/transactions/tags/rename",
+            json!({"from": "Becca", "to": "a,b"}),
+        )
+        .await;
+    bad.assert_status(StatusCode::BAD_REQUEST);
+
+    let deleted = app
+        .post("/api/transactions/tags/delete", json!({"name": "BECCA"}))
+        .await;
+    deleted.assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(app.get("/api/transactions/tags").await.body, json!([]));
+    let kept = app.get("/api/transactions").await;
+    assert_eq!(kept.body.as_array().unwrap().len(), 2);
+    let gone = app
+        .post("/api/transactions/tags/delete", json!({"name": "Becca"}))
+        .await;
+    gone.assert_status(StatusCode::NOT_FOUND);
+}

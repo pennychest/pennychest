@@ -17,6 +17,7 @@ use super::common::{
 use super::{Action, ActionError, Check, Output, Scope, items, length, parse, schema};
 use crate::Money;
 use crate::accounts;
+use crate::accounts::quoted;
 use crate::ledger::{self, Balanced, NewPosting, NewTransaction, Status};
 use crate::lookups::CategorisationSource;
 use crate::tags;
@@ -72,6 +73,21 @@ pub fn actions() -> Vec<Action> {
             TagsInput,
             Scope::Transactions,
             "Remove tags from transactions. A tag no transaction has any more disappears."
+        ),
+        action!(
+            rename_tag,
+            RenameTagInput,
+            Scope::Transactions,
+            "Rename a tag on every transaction that has it. Renaming it to another tag that's \
+             already in use merges the two: every transaction with either ends up with that \
+             one."
+        ),
+        action!(
+            delete_tag,
+            TagInput,
+            Scope::Transactions,
+            "Delete a tag, taking it off every transaction that has it. The transactions \
+             themselves are untouched. Only delete a tag when the user asks for it specifically."
         ),
         action!(
             mark_reviewed,
@@ -712,6 +728,112 @@ async fn finish_tags(
         summary,
         TagsChanged {
             transactions: changed,
+        },
+    ))
+}
+
+fn check_tag(field: &str, name: &str) -> Result<(), String> {
+    tags::normalise(name)
+        .map(|_| ())
+        .map_err(|e| format!("{field}: {e}"))
+}
+
+fn no_tag(name: &str) -> ActionError {
+    ActionError::Invalid(format!(
+        "There is no tag {}. list_tags gives the tags in use.",
+        quoted(name)
+    ))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RenameTagInput {
+    /// A tag from list_tags. Case doesn't matter.
+    tag: String,
+    /// What to call it. If this is another tag in use, the two are merged.
+    new_name: String,
+}
+
+impl Check for RenameTagInput {
+    fn check(&self) -> Result<(), String> {
+        check_tag("tag", &self.tag)?;
+        check_tag("new_name", &self.new_name)
+    }
+}
+
+pub async fn rename_tag(db: &SqlitePool, input: RenameTagInput) -> Result<Output, ActionError> {
+    let from = tags::normalise(&input.tag).map_err(|e| ActionError::invalid(e.to_string()))?;
+    let to = tags::normalise(&input.new_name).map_err(|e| ActionError::invalid(e.to_string()))?;
+    let mut tx = db.begin().await?;
+    let renamed = tags::rename(&mut tx, &from, &to)
+        .await?
+        .ok_or_else(|| no_tag(&from))?;
+    if renamed.from == renamed.to {
+        return Err(ActionError::Invalid(format!(
+            "The tag is already called {}.",
+            quoted(&renamed.to)
+        )));
+    }
+    tx.commit().await?;
+    let count = count_of(renamed.transaction_ids.len(), "transaction");
+    let summary = if renamed.merged {
+        format!(
+            "Merged the tag {} into {} ({count})",
+            quoted(&renamed.from),
+            quoted(&renamed.to)
+        )
+    } else {
+        format!(
+            "Renamed the tag {} to {} ({count})",
+            quoted(&renamed.from),
+            quoted(&renamed.to)
+        )
+    };
+    let output = Output::new(json!({ "renamed": {
+        "from": renamed.from,
+        "to": renamed.to,
+        "merged": renamed.merged,
+        "transaction_count": renamed.transaction_ids.len(),
+    }}));
+    Ok(output.with_change(summary, renamed))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TagInput {
+    /// A tag from list_tags. Case doesn't matter.
+    tag: String,
+}
+
+impl Check for TagInput {
+    fn check(&self) -> Result<(), String> {
+        check_tag("tag", &self.tag)
+    }
+}
+
+pub async fn delete_tag(db: &SqlitePool, input: TagInput) -> Result<Output, ActionError> {
+    let name = tags::normalise(&input.tag).map_err(|e| ActionError::invalid(e.to_string()))?;
+    let mut tx = db.begin().await?;
+    let (tag, ids) = tags::delete(&mut tx, &name)
+        .await?
+        .ok_or_else(|| no_tag(&name))?;
+    tx.commit().await?;
+    let summary = format!(
+        "Deleted the tag {} ({})",
+        quoted(&tag),
+        count_of(ids.len(), "transaction")
+    );
+    let output = Output::new(json!({ "deleted": { "tag": tag, "transaction_count": ids.len() } }));
+    Ok(output.with_change(
+        summary,
+        TagsChanged {
+            transactions: ids
+                .into_iter()
+                .map(|transaction_id| TagsOf {
+                    transaction_id,
+                    tags: vec![tag.clone()],
+                })
+                .collect(),
         },
     ))
 }

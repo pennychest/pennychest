@@ -33,7 +33,7 @@ fn read<T: DeserializeOwned>(data: Value) -> Result<T, UndoError> {
 
 /// The actions `reverse` undoes: every action that changes data, as a test checks.
 #[cfg(test)]
-pub const UNDOABLE: [&str; 14] = [
+pub const UNDOABLE: [&str; 16] = [
     "create_category",
     "rename_category",
     "set_category_icon",
@@ -48,6 +48,8 @@ pub const UNDOABLE: [&str; 14] = [
     "mark_reviewed",
     "tag_transactions",
     "untag_transactions",
+    "rename_tag",
+    "delete_tag",
 ];
 
 pub async fn reverse(
@@ -68,7 +70,8 @@ pub async fn reverse(
         "delete_transactions" => delete_transactions(db, read(data)?).await,
         "mark_reviewed" => mark_reviewed(db, read(data)?).await,
         "tag_transactions" => retag(db, read(data)?, false).await,
-        "untag_transactions" => retag(db, read(data)?, true).await,
+        "untag_transactions" | "delete_tag" => retag(db, read(data)?, true).await,
+        "rename_tag" => rename_tag(db, read(data)?).await,
         _ => Err(refuse(format!("Changes made by {action} can't be undone."))),
     }
 }
@@ -469,5 +472,41 @@ async fn retag(
             tags::remove(db, of.transaction_id, &of.tags).await?;
         }
     }
+    Ok(())
+}
+
+async fn rename_tag(db: &mut SqliteConnection, data: tags::Renamed) -> Result<(), UndoError> {
+    if data.merged {
+        // Give its transactions the old tag back, and take the other off those that only
+        // got it from the merge
+        let (from, to) = ([data.from], [data.to]);
+        for id in data.transaction_ids {
+            if !exists(db, "SELECT 1 FROM transactions WHERE id = ?", id).await? {
+                continue;
+            }
+            tags::add(db, id, &from).await?;
+            if !data.had_both.contains(&id) {
+                tags::remove(db, id, &to).await?;
+            }
+        }
+        return Ok(());
+    }
+    match tags::find(db, &data.to).await? {
+        Some((_, spelt)) if spelt == data.to => {}
+        _ => {
+            return Err(refuse(format!(
+                "The tag '{}' has been renamed or deleted since.",
+                data.to
+            )));
+        }
+    }
+    let recased = data.from.eq_ignore_ascii_case(&data.to);
+    if !recased && tags::find(db, &data.from).await?.is_some() {
+        return Err(refuse(format!(
+            "Another tag is now called '{}'.",
+            data.from
+        )));
+    }
+    tags::rename(db, &data.to, &data.from).await?;
     Ok(())
 }

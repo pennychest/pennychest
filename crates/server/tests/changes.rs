@@ -473,3 +473,93 @@ async fn undo_tagging_and_untagging() {
     let after = ok(&mut app, "list_transactions", pizza).await;
     assert_eq!(tags_of(&after), json!(["Becca"]));
 }
+
+#[tokio::test]
+async fn undo_renaming_merging_and_deleting_tags() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let s = spending(&mut app, &ids).await;
+    let tag = |ids: Value, tags: Value| json!({"transaction_ids": ids, "tags": tags});
+    ok(
+        &mut app,
+        "tag_transactions",
+        tag(json!([s["pizza"], s["pending"]]), json!(["Bex"])),
+    )
+    .await;
+    ok(
+        &mut app,
+        "tag_transactions",
+        tag(json!([s["pizza"]]), json!(["Becca"])),
+    )
+    .await;
+    let bex_and_becca = json!([
+        {"name": "Becca", "transaction_count": 1},
+        {"name": "Bex", "transaction_count": 2},
+    ]);
+
+    let renamed = ok(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "bex", "new_name": "Rebecca"}),
+    )
+    .await;
+    assert_eq!(
+        renamed["change"]["summary"],
+        "Renamed the tag 'Bex' to 'Rebecca' (2 transactions)"
+    );
+    undone(&mut app, &renamed).await;
+    assert_eq!(
+        ok(&mut app, "list_tags", json!({})).await["tags"],
+        bex_and_becca
+    );
+
+    let merged = ok(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "Bex", "new_name": "becca"}),
+    )
+    .await;
+    assert_eq!(
+        merged["renamed"],
+        json!({"from": "Bex", "to": "Becca", "merged": true, "transaction_count": 2})
+    );
+    assert_eq!(
+        ok(&mut app, "list_tags", json!({})).await["tags"],
+        json!([{"name": "Becca", "transaction_count": 2}])
+    );
+    undone(&mut app, &merged).await;
+    assert_eq!(
+        ok(&mut app, "list_tags", json!({})).await["tags"],
+        bex_and_becca,
+        "only the transactions that had Becca before keep it"
+    );
+
+    let deleted = ok(&mut app, "delete_tag", json!({"tag": "bex"})).await;
+    assert_eq!(
+        deleted["deleted"],
+        json!({"tag": "Bex", "transaction_count": 2})
+    );
+    undone(&mut app, &deleted).await;
+    assert_eq!(
+        ok(&mut app, "list_tags", json!({})).await["tags"],
+        bex_and_becca
+    );
+
+    let again = ok(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "Bex", "new_name": "Rebecca"}),
+    )
+    .await;
+    ok(
+        &mut app,
+        "rename_tag",
+        json!({"tag": "Rebecca", "new_name": "Bec"}),
+    )
+    .await;
+    let refused = undo(&mut app, &again["change"]["id"]).await;
+    assert_eq!(
+        refused.body["detail"],
+        "The tag 'Rebecca' has been renamed or deleted since."
+    );
+}

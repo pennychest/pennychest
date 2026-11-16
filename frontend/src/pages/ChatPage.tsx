@@ -40,6 +40,8 @@ const CHANGE_LABELS: Record<string, string> = {
   mark_reviewed: "Marking transactions reviewed",
   tag_transactions: "Tagging transactions",
   untag_transactions: "Removing tags",
+  rename_tag: "Renaming a tag",
+  delete_tag: "Deleting a tag",
 };
 
 // Data a chat change can touch, refreshed after an undo.
