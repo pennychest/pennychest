@@ -18,6 +18,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use super::batches::{TRANSFERS_PENDING_PATH, UNCATEGORISED_PATH, normalise};
 use crate::Money;
+use crate::accounts::{self, AccountType};
 use crate::ai::config::{self, Task};
 use crate::ai::http::Transport;
 use crate::ai::matching::{ask_pairs, best};
@@ -364,8 +365,6 @@ pub enum MatchError {
     PeerNotFound,
     #[error("Peer transaction is already linked to a transfer")]
     PeerTaken,
-    #[error("Assets:Transfers:Pending account not found. Load UK defaults first.")]
-    NoPendingAccount,
     #[error("Cannot find category posting")]
     NoCategoryPosting,
     /// What to set up for the model.
@@ -555,11 +554,8 @@ pub async fn mark_as_transfer(
     let (batch_account, postings) = postings_of(&mut tx, id)
         .await?
         .ok_or(MatchError::NotFound)?;
-    let pending = sqlx::query_scalar("SELECT id FROM accounts WHERE full_path = ?")
-        .bind(TRANSFERS_PENDING_PATH)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or(MatchError::NoPendingAccount)?;
+    let pending =
+        accounts::ensure_path(&mut tx, TRANSFERS_PENDING_PATH, AccountType::Asset).await?;
     let category =
         category_posting(batch_account, &postings).ok_or(MatchError::NoCategoryPosting)?;
     park(&mut tx, category, pending).await?;

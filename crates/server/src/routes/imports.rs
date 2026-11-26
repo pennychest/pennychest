@@ -450,7 +450,6 @@ impl From<MatchError> for ApiError {
             }
             MatchError::PeerTaken => Self::new(StatusCode::CONFLICT, message),
             MatchError::NoCategoryPosting | MatchError::Model(_) => Self::bad_request(message),
-            MatchError::NoPendingAccount => Self::new(StatusCode::INTERNAL_SERVER_ERROR, message),
             MatchError::Database(e) => Self::internal(e),
         }
     }
