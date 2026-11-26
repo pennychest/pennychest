@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.10.1 (2026-11-26)
+
+### Fixed
+
+- 🐛 Create Transfers:Pending when a transfer needs it (#18)
+
 ## v0.10.0 (2026-11-16)
 
 ### Added
