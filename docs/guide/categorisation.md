@@ -8,7 +8,7 @@ On seven months of real spending, this got **98.8% of transactions right while c
 
 When you import a statement, each transaction goes through these layers in order until one of them categorises it:
 
-1. **Your rules.** Rules match a transaction's description by prefix, substring or regular expression, e.g. `COOP` → `Expenses:Food`. When more than one rule matches, the one with the highest priority wins. PennyChest comes with UK default rules, which you can edit under **Settings → Categorisation Rules**.
+1. **Your rules.** Rules match a transaction's description by prefix, substring or regular expression, e.g. `COOP` → `Expenses:Food`. When more than one rule matches, the one with the highest priority wins. A rule can also require a [tag](#tags), for a description that means different things for different people: `COOP JERSEY` tagged *Rebecca Bailey* → `Mobile:Becca`. PennyChest comes with UK default rules, which you can edit under **Settings → Categorisation Rules**.
 2. **Card taps.** If a [card tap](card-taps.md) from your phone matches the statement line, the line takes the tap's category.
 3. **Learning from your categories.** This is a model trained on transactions you've already categorised. It runs inside PennyChest and needs no AI provider.
 4. **AI.** If *Categorising transactions* is on, the remaining lines go to its model, straight away or when you press **Suggest with AI** on the import's review page; see [AI integration](ai-integration.md#tasks). This layer works best with a decision model such as [Jev](#jev), which reports how sure it is.

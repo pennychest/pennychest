@@ -129,7 +129,7 @@ async fn shown(
         .iter()
         .map(|r| {
             rules
-                .first_match(&r.merchant)
+                .first_match(&r.merchant, &[])
                 .map(|rule| paths.get(&rule.target_account_id).cloned())
                 .map(Option::unwrap_or_default)
         })

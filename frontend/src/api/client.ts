@@ -100,6 +100,8 @@ export interface Rule {
   priority: number;
   source: string | null;
   description: string | null;
+  // Only transactions with this tag match, when set
+  tag?: string | null;
 }
 
 export interface LookupItem {
@@ -172,6 +174,7 @@ export interface ImportTransaction {
   duplicate_of: DuplicateOf | null;
   // 0 (normal) to 1 (very unusual), once the insights model has judged it
   unusual_score: number | null;
+  tags: string[];
 }
 
 export interface DuplicateOf {
@@ -399,7 +402,7 @@ export const rulesApi = {
     request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: number) =>
     request<void>(`/rules/${id}`, { method: "DELETE" }),
-  preview: (data: { pattern: string; match_type_id: number; exclude_rule_id?: number }) =>
+  preview: (data: { pattern: string; match_type_id: number; tag?: string | null; exclude_rule_id?: number }) =>
     request<RulePreviewResponse>("/rules/preview", {
       method: "POST",
       body: JSON.stringify(data),

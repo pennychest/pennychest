@@ -247,8 +247,8 @@ pub async fn delete(
 }
 
 /// Each transaction's tags, in alphabetical order. Transactions without any aren't in the map.
-pub async fn for_transactions(
-    db: &SqlitePool,
+pub async fn for_transactions<'e>(
+    db: impl sqlx::SqliteExecutor<'e>,
     ids: &[i64],
 ) -> Result<HashMap<i64, Vec<String>>, sqlx::Error> {
     let mut tags: HashMap<i64, Vec<String>> = HashMap::new();

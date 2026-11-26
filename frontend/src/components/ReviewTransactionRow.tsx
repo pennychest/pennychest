@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, BookOpen, Check, Copy, FileDown, Plus, Tag } from "lucide-react";
+import { ArrowLeftRight, BookOpen, Check, Copy, FileDown, Hash, Plus, Tag } from "lucide-react";
 import { importsApi, transactionsApi, type ImportTransaction } from "../api/client";
 import { cn, formatAccountPath, formatCurrency, formatDate } from "../lib/utils";
 import { Badge } from "./ui/badge";
@@ -102,6 +102,15 @@ export function ReviewTransactionRow({
               Unusual
             </Badge>
           )}
+          {transaction.tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-0.5 rounded-md bg-secondary px-1.5 text-xs text-secondary-foreground"
+            >
+              <Hash className="h-3 w-3 shrink-0" />
+              {tag}
+            </span>
+          ))}
           {transaction.rule_pattern && (
             <span className="inline-flex items-center gap-1 min-w-0">
               <BookOpen className="h-3 w-3 shrink-0" />
