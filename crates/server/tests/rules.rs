@@ -49,6 +49,21 @@ async fn lists_rules_in_the_order_they_are_tried() {
 }
 
 #[tokio::test]
+async fn a_null_source_is_a_manual_rule() {
+    let mut app = seeded().await;
+    let fuel = id_of(&mut app, "Expenses:Transport:Fuel").await;
+    let created = app
+        .post(
+            "/api/rules",
+            json!({"pattern": "ESSO", "match_type_id": 1, "target_account_id": fuel,
+                   "priority": 10, "source": null, "description": null}),
+        )
+        .await;
+    created.assert_status(StatusCode::CREATED);
+    assert_eq!(created.body["source"], "manual");
+}
+
+#[tokio::test]
 async fn creates_reads_updates_and_deletes() {
     let mut app = seeded().await;
     let fuel = id_of(&mut app, "Expenses:Transport:Fuel").await;

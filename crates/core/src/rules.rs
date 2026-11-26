@@ -95,7 +95,8 @@ pub struct NewRule {
     pub target_account_id: i64,
     #[serde(default)]
     pub priority: i64,
-    #[serde(default = "manual")]
+    /// Where the rule came from; left out or `null`, one the user made.
+    #[serde(default = "manual", deserialize_with = "manual_if_null")]
     pub source: String,
     #[serde(default)]
     pub description: Option<String>,
@@ -103,6 +104,10 @@ pub struct NewRule {
 
 fn manual() -> String {
     "manual".into()
+}
+
+fn manual_if_null<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_else(manual))
 }
 
 /// Changes to a rule. Fields left out stay as they are; the description can be cleared with
