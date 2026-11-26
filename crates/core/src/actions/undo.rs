@@ -33,7 +33,7 @@ fn read<T: DeserializeOwned>(data: Value) -> Result<T, UndoError> {
 
 /// The actions `reverse` undoes: every action that changes data, as a test checks.
 #[cfg(test)]
-pub const UNDOABLE: [&str; 16] = [
+pub const UNDOABLE: [&str; 17] = [
     "create_category",
     "rename_category",
     "set_category_icon",
@@ -41,6 +41,7 @@ pub const UNDOABLE: [&str; 16] = [
     "set_budget",
     "delete_budget",
     "recategorise_transactions",
+    "transfer_to_account",
     "add_transaction",
     "add_transfer",
     "edit_transaction",
@@ -64,7 +65,7 @@ pub async fn reverse(
         "create_rule" => create_rule(db, read(data)?).await,
         "set_budget" => set_budget(db, read(data)?).await,
         "delete_budget" => delete_budget(db, read(data)?).await,
-        "recategorise_transactions" => recategorise(db, read(data)?).await,
+        "recategorise_transactions" | "transfer_to_account" => recategorise(db, read(data)?).await,
         "add_transaction" | "add_transfer" => add(db, read(data)?).await,
         "edit_transaction" => edit(db, read(data)?).await,
         "delete_transactions" => delete_transactions(db, read(data)?).await,

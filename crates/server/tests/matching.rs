@@ -710,3 +710,39 @@ async fn transfers_can_be_marked_by_hand() {
     assert_eq!(balance["unlinked_count"], 1);
     assert_eq!(balance["balance"], "40.0000");
 }
+
+#[tokio::test]
+async fn transfers_can_go_to_an_account_without_statements() {
+    let mut s = without_jev().await;
+    let current = s
+        .import(
+            "Assets:Current",
+            &[("20/09/2026", "TRADING 212", "-500.00")],
+            "d.csv",
+        )
+        .await;
+    let id = current[0]["id"].clone();
+    let url = format!("/api/imports/transactions/{id}/mark-as-transfer");
+    for wrong in [
+        "Assets:Current",
+        "Assets:Transfers:Pending",
+        "Expenses:Uncategorised",
+    ] {
+        s.app
+            .post(&url, json!({"account_id": s.accounts[wrong]}))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+    let marked = s
+        .app
+        .post(&url, json!({"account_id": s.accounts["Liabilities:Card"]}))
+        .await
+        .body;
+    assert_eq!(marked["parked"], false);
+    let balance = s
+        .app
+        .get("/api/imports/transfers/pending-balance")
+        .await
+        .body;
+    assert_eq!(balance["unlinked_count"], 0);
+}

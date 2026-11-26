@@ -33,6 +33,7 @@ const CHANGE_LABELS: Record<string, string> = {
   set_budget: "Setting a budget",
   delete_budget: "Removing a budget",
   recategorise_transactions: "Recategorising transactions",
+  transfer_to_account: "Recording transfers",
   add_transaction: "Adding a transaction",
   add_transfer: "Adding a transfer",
   edit_transaction: "Editing a transaction",
