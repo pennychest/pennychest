@@ -204,6 +204,47 @@ pub async fn find_by_path(
     .await
 }
 
+/// The account an account path names, creating it and any missing parents (of `kind`) if
+/// there's none. For accounts PennyChest relies on, such as Assets:Transfers:Pending, in
+/// ledgers set up without the default accounts.
+pub async fn ensure_path(
+    db: &mut SqliteConnection,
+    path: &str,
+    kind: AccountType,
+) -> Result<i64, sqlx::Error> {
+    if let Some(account) = find_by_path(db, path).await? {
+        return Ok(account.id);
+    }
+    let mut parent_id = None;
+    let mut full_path = String::new();
+    for name in path.split(':') {
+        if !full_path.is_empty() {
+            full_path.push(':');
+        }
+        full_path.push_str(name);
+        parent_id = Some(match find_by_path(db, &full_path).await? {
+            Some(account) => account.id,
+            None => {
+                insert(
+                    db,
+                    &NewAccount {
+                        name: name.to_owned(),
+                        full_path: full_path.clone(),
+                        parent_id,
+                        kind,
+                        currency: default_currency(),
+                        bank_identifier: None,
+                        icon: None,
+                    },
+                )
+                .await?
+                .id
+            }
+        });
+    }
+    Ok(parent_id.expect("a path has at least one part"))
+}
+
 async fn path_taken(db: &mut SqliteConnection, path: &str) -> Result<bool, sqlx::Error> {
     Ok(find_by_path(db, path).await?.is_some())
 }
@@ -805,6 +846,38 @@ mod tests {
             .await
             .unwrap()
             .unwrap_or_else(|| panic!("no account {path}"))
+    }
+
+    #[tokio::test]
+    async fn ensures_a_path_and_its_parents() {
+        let pool = db::open_in_memory().await.unwrap();
+        let mut conn = pool.acquire().await.unwrap();
+        let assets = insert(
+            &mut conn,
+            &new("Assets", "Assets", AccountType::Asset, None),
+        )
+        .await
+        .unwrap();
+        let path = "Assets:Transfers:Pending";
+        let id = ensure_path(&mut conn, path, AccountType::Asset)
+            .await
+            .unwrap();
+        let transfers = find_by_path(&mut conn, "Assets:Transfers")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(transfers.parent_id, Some(assets.id));
+        let pending = find_by_path(&mut conn, path).await.unwrap().unwrap();
+        assert_eq!((pending.id, pending.parent_id), (id, Some(transfers.id)));
+        assert_eq!(pending.name, "Pending");
+        assert_eq!(
+            ensure_path(&mut conn, path, AccountType::Asset)
+                .await
+                .unwrap(),
+            id
+        );
+        drop(conn);
+        assert_eq!(list(&pool).await.unwrap().len(), 3);
     }
 
     #[tokio::test]

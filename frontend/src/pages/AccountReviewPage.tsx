@@ -292,7 +292,7 @@ export function AccountReviewPage() {
                           setSelectedTxn(txn);
                           setShowRuleDialog(true);
                         }}
-                        onMarkTransfer={() => setTransferTarget(txn)}
+                        onMarkTransfer={() => { markTransferMutation.reset(); setTransferTarget(txn); }}
                       />
                     ))}
                   </div>
@@ -313,6 +313,7 @@ export function AccountReviewPage() {
             markTransferMutation.mutate({ transactionId: transferTarget.id, peerTransactionId })
           }
           isPending={markTransferMutation.isPending}
+          error={markTransferMutation.error}
         />
       )}
 
@@ -373,12 +374,14 @@ function TransferDialog({
   onOpenChange,
   onMark,
   isPending,
+  error,
 }: {
   transaction: ImportTransaction;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onMark: (peerTransactionId: number | null) => void;
   isPending: boolean;
+  error: Error | null;
 }) {
   const suggestionsQuery = useQuery({
     queryKey: ["transfer-suggestions", transaction.id],
@@ -463,6 +466,8 @@ function TransferDialog({
             {isPending ? "Saving…" : "Park in Transfers:Pending"}
           </Button>
         </div>
+
+        {error && <p className="text-sm text-destructive">{error.message}</p>}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
