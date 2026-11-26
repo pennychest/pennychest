@@ -367,6 +367,8 @@ pub enum MatchError {
     PeerTaken,
     #[error("Cannot find category posting")]
     NoCategoryPosting,
+    #[error("Choose one of your bank accounts, cards or other accounts")]
+    NotAnAccount,
     /// What to set up for the model.
     #[error("{0}")]
     Model(String),
@@ -524,6 +526,10 @@ pub async fn transfer_suggestions(
 pub struct MarkAsTransfer {
     #[serde(default)]
     pub peer_transaction_id: Option<i64>,
+    /// An account with no statements of its own that the money went to or came from, in
+    /// place of a peer.
+    #[serde(default)]
+    pub account_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -558,6 +564,30 @@ pub async fn mark_as_transfer(
         accounts::ensure_path(&mut tx, TRANSFERS_PENDING_PATH, AccountType::Asset).await?;
     let category =
         category_posting(batch_account, &postings).ok_or(MatchError::NoCategoryPosting)?;
+    if let Some(account_id) = request.account_id {
+        let kind: Option<AccountType> =
+            sqlx::query_scalar("SELECT type FROM accounts WHERE id = ?")
+                .bind(account_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let own = postings
+            .iter()
+            .any(|(_, account, _)| *account == account_id);
+        if own
+            || account_id == pending
+            || !matches!(kind, Some(AccountType::Asset | AccountType::Liability))
+        {
+            return Err(MatchError::NotAnAccount);
+        }
+        park(&mut tx, category, account_id).await?;
+        tx.commit().await?;
+        return Ok(MarkedAsTransfer {
+            status: "ok",
+            transaction_id: id,
+            peer_transaction_id: None,
+            parked: false,
+        });
+    }
     park(&mut tx, category, pending).await?;
 
     if let Some(peer) = request.peer_transaction_id {

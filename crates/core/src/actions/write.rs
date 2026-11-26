@@ -54,6 +54,15 @@ pub fn actions() -> Vec<Action> {
              accounts), are skipped and reported."
         ),
         action!(
+            transfer_to_account,
+            TransferToAccountInput,
+            Scope::Transactions,
+            "Record transactions as transfers to or from one of the user's accounts that has no \
+             statements of its own, such as an investment platform or a card that isn't \
+             imported: the category is replaced by that account. For transfers between two \
+             imported accounts, link the two sides on the import's review page instead."
+        ),
+        action!(
             set_budget,
             SetBudgetInput,
             Scope::Organise,
@@ -508,6 +517,95 @@ pub async fn recategorise_transactions(
             "Moved {} to {}",
             count_of(updated.len(), "transaction"),
             category.full_path
+        ),
+        Recategorised { postings: before },
+    ))
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TransferToAccountInput {
+    /// IDs from list_transactions.
+    #[schemars(length(min = 1, max = 200))]
+    transaction_ids: Vec<i64>,
+    /// The bank account, card or other account the money went to or came from (path or
+    /// name, from list_accounts).
+    account: String,
+}
+
+impl Check for TransferToAccountInput {
+    fn check(&self) -> Result<(), String> {
+        items("transaction_ids", &self.transaction_ids, 1, 200)
+    }
+}
+
+pub async fn transfer_to_account(
+    db: &SqlitePool,
+    input: TransferToAccountInput,
+) -> Result<Output, ActionError> {
+    let account = common::find_money_account(db, &input.account).await?;
+    if account.full_path == crate::imports::batches::TRANSFERS_PENDING_PATH {
+        return Err(ActionError::invalid(
+            "Transfers:Pending holds transfers waiting for their other side; name the account \
+             the money went to.",
+        ));
+    }
+    let ids = unique(&input.transaction_ids);
+    let loaded = common::load(db, &ids).await?;
+    let (mut updated, mut skipped, mut before) = (Vec::new(), Vec::new(), Vec::new());
+    for id in ids {
+        let Some(txn) = loaded.get(&id) else {
+            skipped.push(json!({ "id": id, "reason": "not found" }));
+            continue;
+        };
+        if txn
+            .money_side()
+            .iter()
+            .any(|leg| leg.account_id == account.id)
+        {
+            skipped.push(json!({ "id": id, "reason": "already on that account" }));
+            continue;
+        }
+        match txn.categories().as_slice() {
+            [] => skipped.push(json!({ "id": id, "reason": "has no category (e.g. a transfer)" })),
+            [posting] => {
+                before.push(PostingBefore {
+                    id: posting.id,
+                    account_id: posting.account_id,
+                    categorised_by_id: posting.categorised_by_id,
+                    rule_id: posting.rule_id,
+                });
+                updated.push(id);
+            }
+            _ => skipped.push(json!({ "id": id, "reason": "split across several categories" })),
+        }
+    }
+    let mut tx = db.begin().await?;
+    for posting in &before {
+        sqlx::query(
+            "UPDATE postings SET account_id = ?, categorised_by_id = ?, rule_id = NULL
+             WHERE id = ?",
+        )
+        .bind(account.id)
+        .bind(CategorisationSource::Transfer as i64)
+        .bind(posting.id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    let output = Output::new(json!({
+        "account": account.full_path,
+        "updated": updated,
+        "skipped": skipped,
+    }));
+    if updated.is_empty() {
+        return Ok(output);
+    }
+    Ok(output.with_change(
+        format!(
+            "Recorded {} as transfers with {}",
+            count_of(updated.len(), "transaction"),
+            account.full_path
         ),
         Recategorised { postings: before },
     ))

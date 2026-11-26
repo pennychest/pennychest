@@ -492,10 +492,13 @@ export const importsApi = {
     request<{ deleted: boolean }>(`/imports/batches/${batchId}`, { method: "DELETE" }),
   getTransferSuggestions: (transactionId: number) =>
     request<TransferSuggestion[]>(`/imports/transactions/${transactionId}/transfer-suggestions`),
-  markAsTransfer: (transactionId: number, peerTransactionId: number | null) =>
+  markAsTransfer: (transactionId: number, peerTransactionId: number | null, accountId?: number) =>
     request<{ status: string; transaction_id: number; peer_transaction_id: number | null; parked: boolean }>(
       `/imports/transactions/${transactionId}/mark-as-transfer`,
-      { method: "POST", body: JSON.stringify({ peer_transaction_id: peerTransactionId }) }
+      {
+        method: "POST",
+        body: JSON.stringify({ peer_transaction_id: peerTransactionId, account_id: accountId ?? null }),
+      }
     ),
   markNotDuplicate: (transactionId: number) =>
     request<void>(`/imports/transactions/${transactionId}/not-duplicate`, { method: "POST" }),

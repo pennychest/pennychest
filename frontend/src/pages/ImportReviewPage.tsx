@@ -8,6 +8,7 @@ import {
   rulesApi,
   lookupsApi,
   aiApi,
+  type Account,
   type ImportTransaction,
   type RuleSuggestion,
 } from "../api/client";
@@ -144,8 +145,15 @@ export function ImportReviewPage() {
   });
 
   const markTransferMutation = useMutation({
-    mutationFn: ({ transactionId, peerTransactionId }: { transactionId: number; peerTransactionId: number | null }) =>
-      importsApi.markAsTransfer(transactionId, peerTransactionId),
+    mutationFn: ({
+      transactionId,
+      peerTransactionId,
+      transferAccountId,
+    }: {
+      transactionId: number;
+      peerTransactionId: number | null;
+      transferAccountId?: number;
+    }) => importsApi.markAsTransfer(transactionId, peerTransactionId, transferAccountId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["import-review", batchId] });
       queryClient.invalidateQueries({ queryKey: ["pending-transfers-balance"] });
@@ -360,8 +368,9 @@ export function ImportReviewPage() {
           transaction={transferTarget}
           open={true}
           onOpenChange={(open) => { if (!open) setTransferTarget(null); }}
-          onMark={(peerTransactionId) =>
-            markTransferMutation.mutate({ transactionId: transferTarget.id, peerTransactionId })
+          accounts={accounts}
+          onMark={(peerTransactionId, transferAccountId) =>
+            markTransferMutation.mutate({ transactionId: transferTarget.id, peerTransactionId, transferAccountId })
           }
           isPending={markTransferMutation.isPending}
           error={markTransferMutation.error}
@@ -422,6 +431,7 @@ export function ImportReviewPage() {
 
 function TransferDialog({
   transaction,
+  accounts,
   open,
   onOpenChange,
   onMark,
@@ -429,9 +439,10 @@ function TransferDialog({
   error,
 }: {
   transaction: ImportTransaction;
+  accounts: Account[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onMark: (peerTransactionId: number | null) => void;
+  onMark: (peerTransactionId: number | null, transferAccountId?: number) => void;
   isPending: boolean;
   error: Error | null;
 }) {
@@ -443,6 +454,15 @@ function TransferDialog({
   });
 
   const suggestions = suggestionsQuery.data ?? [];
+  // Accounts it could have gone to that have no statements here, such as an investment
+  // platform: money accounts with nothing under them, other than its own and Transfers.
+  const otherAccounts = accounts.filter(
+    (a) =>
+      (a.type === "asset" || a.type === "liability") &&
+      !a.full_path.startsWith("Assets:Transfers") &&
+      a.full_path !== transaction.account_full_path &&
+      !accounts.some((b) => b.parent_id === a.id)
+  );
   const amount = parseFloat(transaction.amount);
 
   return (
@@ -518,6 +538,26 @@ function TransferDialog({
             {isPending ? "Saving…" : "Park in Transfers:Pending"}
           </Button>
         </div>
+
+        {otherAccounts.length > 0 && (
+          <div className="border-t pt-3 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Or it went to or came from an account you don't import, such as an investment platform:
+            </p>
+            <Select value="" onValueChange={(v) => onMark(null, Number(v))} disabled={isPending}>
+              <SelectTrigger aria-label="Account">
+                <SelectValue placeholder="Choose an account" />
+              </SelectTrigger>
+              <SelectContent>
+                {otherAccounts.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {formatAccountPath(a.full_path)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {error && <p className="text-sm text-destructive">{error.message}</p>}
 

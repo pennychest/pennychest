@@ -37,8 +37,9 @@ const ORGANISE: [&str; 6] = [
     "set_budget",
     "delete_budget",
 ];
-const TRANSACTIONS: [&str; 10] = [
+const TRANSACTIONS: [&str; 11] = [
     "recategorise_transactions",
+    "transfer_to_account",
     "add_transaction",
     "add_transfer",
     "edit_transaction",
@@ -642,6 +643,49 @@ async fn recategorise_transactions() {
         &mut app,
         "recategorise_transactions",
         json!({"category": "Transport", "transaction_ids": []}),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn transfer_to_an_account_without_statements() {
+    let mut app = TestApp::signed_in().await;
+    let ids = ledger(&mut app).await;
+    let s = spending(&mut app, &ids).await;
+    let result = ok(
+        &mut app,
+        "transfer_to_account",
+        json!({
+            "account": "Savings",
+            "transaction_ids": [s["tesco_aug"], s["transfer"], s["split"], 999999],
+        }),
+    )
+    .await;
+    assert_eq!(result["account"], "Assets:Bank:Savings");
+    assert_eq!(result["updated"], json!([s["tesco_aug"]]));
+    assert_eq!(
+        result["skipped"],
+        json!([
+            {"id": s["transfer"], "reason": "already on that account"},
+            {"id": s["split"], "reason": "split across several categories"},
+            {"id": 999999, "reason": "not found"},
+        ])
+    );
+    let moved = postings(&mut app, s["tesco_aug"]).await;
+    assert!(moved.contains_key("Assets:Bank:Savings"));
+    assert!(!moved.contains_key("Expenses:Food:Groceries"));
+    let own = ok(
+        &mut app,
+        "transfer_to_account",
+        json!({"account": "Current", "transaction_ids": [s["tesco_jul"]]}),
+    )
+    .await;
+    assert_eq!(own["updated"], json!([]));
+    act(
+        &mut app,
+        "transfer_to_account",
+        json!({"account": "Groceries", "transaction_ids": [s["tesco_jul"]]}),
     )
     .await
     .assert_status(StatusCode::BAD_REQUEST);

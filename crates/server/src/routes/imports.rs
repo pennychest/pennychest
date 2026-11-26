@@ -449,7 +449,9 @@ impl From<MatchError> for ApiError {
                 Self::not_found(message)
             }
             MatchError::PeerTaken => Self::new(StatusCode::CONFLICT, message),
-            MatchError::NoCategoryPosting | MatchError::Model(_) => Self::bad_request(message),
+            MatchError::NoCategoryPosting | MatchError::NotAnAccount | MatchError::Model(_) => {
+                Self::bad_request(message)
+            }
             MatchError::Database(e) => Self::internal(e),
         }
     }

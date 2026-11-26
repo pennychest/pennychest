@@ -47,6 +47,7 @@ An agent can always look things up. It can change things only if you allow it, s
 | `add_transfer` | Record money moved between your own accounts |
 | `edit_transaction` | Change a transaction's description, date, amount, category or account |
 | `recategorise_transactions` | Move transactions to another category |
+| `transfer_to_account` | Record transactions as transfers with an account that has no statements |
 | `mark_reviewed` | Mark imported transactions as reviewed |
 | `tag_transactions` | Add tags to transactions |
 | `untag_transactions` | Remove tags from transactions |
