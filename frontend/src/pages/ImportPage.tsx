@@ -375,10 +375,32 @@ export function ImportPage() {
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["changes"] });
     updateGroup(bankId, { phase: "done", importedAccountId: accountIdNum });
-    navigate({
-      to: "/imports/account/$accountId",
-      params: { accountId: String(accountIdNum) },
-    });
+  }
+
+  // Groups and files ready to import: an account chosen and not imported yet.
+  const readyGroups = Array.from(statementGroups.entries()).filter(([bankId, entries]) => {
+    const state = groupState(bankId, entries);
+    return state.accountId !== "" && (state.phase === "confirming" || state.phase === "error");
+  });
+  const readyFiles = otherFiles.filter(
+    (f) => f.accountId !== "" && f.phase !== "done" && f.phase !== "uploading" && (!f.csv || f.csvColumns),
+  );
+  const readyCount = readyGroups.length + readyFiles.length;
+  const [importingAll, setImportingAll] = useState(false);
+
+  // Imports everything that's ready, one after another, staying on this page.
+  async function importAll() {
+    setImportingAll(true);
+    try {
+      for (const [bankId, entries] of readyGroups) {
+        await importGroup(bankId, entries, groupState(bankId, entries).accountId);
+      }
+      for (const entry of readyFiles) {
+        await importEntry(entry);
+      }
+    } finally {
+      setImportingAll(false);
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -477,6 +499,13 @@ export function ImportPage() {
             </div>
           )}
 
+          {readyCount > 1 && (
+            <Button onClick={importAll} disabled={importingAll} className="w-full">
+              <Upload className="h-4 w-4 mr-2" />
+              {importingAll ? "Importing…" : `Import all ${readyCount}`}
+            </Button>
+          )}
+
           {/* Statement groups */}
           {Array.from(statementGroups.entries()).map(([bankId, entries]) => (
             <AccountGroupCard
@@ -496,10 +525,16 @@ export function ImportPage() {
                 setPendingFiles((prev) => prev.filter((f) => f.id !== id))
               }
               onReview={(accountId) =>
-                navigate({
-                  to: "/imports/account/$accountId",
-                  params: { accountId: String(accountId) },
-                })
+                // One statement: its own import. Several: the account's imports together.
+                entries.length === 1 && entries[0].batchId != null
+                  ? navigate({
+                      to: "/imports/$batchId",
+                      params: { batchId: String(entries[0].batchId) },
+                    })
+                  : navigate({
+                      to: "/imports/account/$accountId",
+                      params: { accountId: String(accountId) },
+                    })
               }
             />
           ))}
