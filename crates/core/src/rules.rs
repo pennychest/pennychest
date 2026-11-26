@@ -79,6 +79,8 @@ pub struct Rule {
     pub priority: i64,
     pub source: Option<String>,
     pub description: Option<String>,
+    /// Only transactions with this tag match, when set.
+    pub tag: Option<String>,
 }
 
 impl Rule {
@@ -100,6 +102,9 @@ pub struct NewRule {
     pub source: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// Only transactions with this tag match, when set.
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 fn manual() -> String {
@@ -120,6 +125,17 @@ pub struct RuleUpdate {
     pub priority: Option<i64>,
     #[serde(default, deserialize_with = "present")]
     pub description: Option<Option<String>>,
+    #[serde(default, deserialize_with = "present")]
+    pub tag: Option<Option<String>>,
+}
+
+/// A tag as a rule keeps it: trimmed, and none when blank.
+fn tag_name(tag: Option<String>) -> Option<String> {
+    tag.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty())
+}
+
+fn has_tag(tags: &[String], tag: &str) -> bool {
+    tags.iter().any(|t| t.to_lowercase() == tag.to_lowercase())
 }
 
 fn present<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -141,6 +157,8 @@ pub struct ExportedRule {
     pub target_account: String,
     #[serde(default)]
     pub priority: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 fn substring() -> String {
@@ -218,7 +236,7 @@ pub enum RuleError {
 
 const SELECT_RULES: &str = "SELECT r.id, r.pattern, r.match_type_id, m.name AS match_type_name,
             r.target_account_id, a.full_path AS target_account_path, r.priority, r.source,
-            r.description
+            r.description, r.tag
      FROM rules r
      LEFT JOIN match_types m ON m.id = r.match_type_id
      LEFT JOIN accounts a ON a.id = r.target_account_id";
@@ -265,8 +283,9 @@ pub async fn create(db: &SqlitePool, new: NewRule) -> Result<Rule, RuleError> {
     )
     .await?;
     let id: i64 = sqlx::query_scalar(
-        "INSERT INTO rules (pattern, match_type_id, target_account_id, priority, source, description)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO rules (pattern, match_type_id, target_account_id, priority, source,
+                            description, tag)
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(&new.pattern)
     .bind(new.match_type_id)
@@ -274,6 +293,7 @@ pub async fn create(db: &SqlitePool, new: NewRule) -> Result<Rule, RuleError> {
     .bind(new.priority)
     .bind(&new.source)
     .bind(&new.description)
+    .bind(tag_name(new.tag))
     .fetch_one(&mut *tx)
     .await?;
     let rule = get(&mut tx, id).await?.ok_or(RuleError::NotFound)?;
@@ -299,6 +319,9 @@ pub async fn update(db: &SqlitePool, id: i64, changes: RuleUpdate) -> Result<Rul
     if let Some(description) = changes.description {
         rule.description = description;
     }
+    if let Some(tag) = changes.tag {
+        rule.tag = tag_name(tag);
+    }
     check(
         &mut tx,
         &rule.pattern,
@@ -308,13 +331,14 @@ pub async fn update(db: &SqlitePool, id: i64, changes: RuleUpdate) -> Result<Rul
     .await?;
     sqlx::query(
         "UPDATE rules SET pattern = ?, match_type_id = ?, target_account_id = ?, priority = ?,
-         description = ? WHERE id = ?",
+         description = ?, tag = ? WHERE id = ?",
     )
     .bind(&rule.pattern)
     .bind(rule.match_type_id)
     .bind(rule.target_account_id)
     .bind(rule.priority)
     .bind(&rule.description)
+    .bind(&rule.tag)
     .bind(id)
     .execute(&mut *tx)
     .await?;
@@ -358,11 +382,14 @@ impl RuleSet {
         }
     }
 
-    /// The rule that categorises this description, if any.
-    pub fn first_match(&self, description: &str) -> Option<&Rule> {
+    /// The rule that categorises a transaction with this description and these tags, if any.
+    pub fn first_match(&self, description: &str, tags: &[String]) -> Option<&Rule> {
         self.rules
             .iter()
-            .find(|(_, matcher)| matcher.matches(description))
+            .find(|(rule, matcher)| {
+                matcher.matches(description)
+                    && rule.tag.as_deref().is_none_or(|tag| has_tag(tags, tag))
+            })
             .map(|(rule, _)| rule)
     }
 
@@ -395,14 +422,21 @@ pub async fn preview(
     db: &SqlitePool,
     pattern: &str,
     match_type_id: i64,
+    tag: Option<&str>,
     exclude_rule_id: Option<i64>,
 ) -> Result<Preview, sqlx::Error> {
     let match_type = MatchType::try_from(match_type_id).unwrap_or(MatchType::Substring);
     let matcher = Matcher::new(pattern, match_type);
+    let tag = tag.map(str::trim).filter(|t| !t.is_empty());
     let mut conn = db.acquire().await?;
     let recent: Vec<MatchingTransaction> = sqlx::query_as(
-        "SELECT id, description FROM transactions ORDER BY date DESC, id DESC LIMIT ?",
+        "SELECT id, description FROM transactions t
+         WHERE ?1 IS NULL OR EXISTS (
+             SELECT 1 FROM transaction_tags tt JOIN tags g ON g.id = tt.tag_id
+             WHERE tt.transaction_id = t.id AND g.name = ?1)
+         ORDER BY date DESC, id DESC LIMIT ?2",
     )
+    .bind(tag)
     .bind(PREVIEW_TRANSACTIONS)
     .fetch_all(&mut *conn)
     .await?;
@@ -448,10 +482,13 @@ pub async fn apply_preview(db: &SqlitePool) -> Result<ApplyPreview, sqlx::Error>
     .bind(APPLY_PREVIEW_TRANSACTIONS)
     .fetch_all(&mut *conn)
     .await?;
+    let ids: Vec<i64> = recent.iter().map(|t| t.id).collect();
+    let tags = crate::tags::for_transactions(&mut *conn, &ids).await?;
 
     let mut items = Vec::new();
     for transaction in recent {
-        let Some(rule) = rules.first_match(&transaction.description) else {
+        let tags = tags.get(&transaction.id).map_or(&[][..], Vec::as_slice);
+        let Some(rule) = rules.first_match(&transaction.description, tags) else {
             continue;
         };
         let categories: Vec<(i64, i64, String)> = sqlx::query_as(
@@ -499,6 +536,7 @@ pub async fn export(db: &SqlitePool) -> Result<Vec<ExportedRule>, sqlx::Error> {
             target_account: rule.target_account_path.unwrap_or_default(),
             pattern: rule.pattern,
             priority: rule.priority,
+            tag: rule.tag,
         })
         .collect())
 }
@@ -523,13 +561,16 @@ pub async fn import(db: &SqlitePool, rules: Vec<ExportedRule>) -> Result<Importe
             skipped += 1;
             continue;
         }
+        let tag = tag_name(rule.tag);
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM rules
-                            WHERE pattern = ? AND match_type_id = ? AND target_account_id = ?)",
+                            WHERE pattern = ? AND match_type_id = ? AND target_account_id = ?
+                              AND tag IS ? COLLATE NOCASE)",
         )
         .bind(&rule.pattern)
         .bind(match_type as i64)
         .bind(target)
+        .bind(&tag)
         .fetch_one(&mut *tx)
         .await?;
         if exists {
@@ -537,13 +578,14 @@ pub async fn import(db: &SqlitePool, rules: Vec<ExportedRule>) -> Result<Importe
             continue;
         }
         sqlx::query(
-            "INSERT INTO rules (pattern, match_type_id, target_account_id, priority, source)
-             VALUES (?, ?, ?, ?, 'import')",
+            "INSERT INTO rules (pattern, match_type_id, target_account_id, priority, source, tag)
+             VALUES (?, ?, ?, ?, 'import', ?)",
         )
         .bind(&rule.pattern)
         .bind(match_type as i64)
         .bind(target)
         .bind(rule.priority)
+        .bind(&tag)
         .execute(&mut *tx)
         .await?;
         imported += 1;
@@ -588,6 +630,32 @@ mod tests {
     }
 
     #[test]
+    fn a_tagged_rule_only_matches_transactions_with_the_tag() {
+        let mut alex = rule(1, "COOP JERSEY", MatchType::Substring, 10);
+        alex.tag = Some("Alexander Bailey".into());
+        let mut becca = rule(2, "COOP JERSEY", MatchType::Substring, 10);
+        becca.tag = Some("Rebecca Bailey".into());
+        let anyone = rule(3, "COOP", MatchType::Substring, 0);
+        let rules = RuleSet::new(vec![alex, becca, anyone]);
+        let tagged = |tag: &str| vec![tag.to_owned()];
+        assert_eq!(
+            rules
+                .first_match("COOP JERSEY", &tagged("rebecca bailey"))
+                .unwrap()
+                .id,
+            2
+        );
+        assert_eq!(
+            rules
+                .first_match("COOP JERSEY", &tagged("Alexander Bailey"))
+                .unwrap()
+                .id,
+            1
+        );
+        assert_eq!(rules.first_match("COOP JERSEY", &[]).unwrap().id, 3);
+    }
+
+    #[test]
     fn unusable_regexes_never_match_and_cant_be_saved() {
         assert!(!matches_rule("abc", "(", MatchType::Regex));
         assert!(matches!(
@@ -610,6 +678,7 @@ mod tests {
             priority,
             source: None,
             description: None,
+            tag: None,
         }
     }
 
@@ -620,10 +689,10 @@ mod tests {
             rule(1, "TESCO", MatchType::Substring, 10),
             rule(2, "TES", MatchType::Prefix, 10),
         ]);
-        assert_eq!(rules.first_match("TESCO EXPRESS 123").unwrap().id, 3);
-        assert_eq!(rules.first_match("TESCO STORES").unwrap().id, 1);
-        assert_eq!(rules.first_match("TESLA").unwrap().id, 2);
-        assert!(rules.first_match("ASDA").is_none());
+        assert_eq!(rules.first_match("TESCO EXPRESS 123", &[]).unwrap().id, 3);
+        assert_eq!(rules.first_match("TESCO STORES", &[]).unwrap().id, 1);
+        assert_eq!(rules.first_match("TESLA", &[]).unwrap().id, 2);
+        assert!(rules.first_match("ASDA", &[]).is_none());
     }
 
     #[test]
@@ -676,6 +745,7 @@ mod tests {
                 priority: 10,
                 source: "manual".into(),
                 description: Some("Supermarket".into()),
+                tag: None,
             },
         )
         .await
@@ -731,6 +801,7 @@ mod tests {
             priority: 0,
             source: "manual".into(),
             description: None,
+            tag: None,
         };
         assert!(matches!(
             create(&pool, new(9, groceries)).await,
@@ -763,12 +834,14 @@ mod tests {
             match_type: "fuzzy".into(),
             target_account: "Expenses:Food".into(),
             priority: 0,
+            tag: None,
         });
         with_bad.push(ExportedRule {
             pattern: "(".into(),
             match_type: "regex".into(),
             target_account: "Expenses:Food".into(),
             priority: 0,
+            tag: None,
         });
         assert_eq!(
             import(&fresh, with_bad).await.unwrap(),

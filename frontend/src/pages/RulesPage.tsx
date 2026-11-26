@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { rulesApi, accountsApi, lookupsApi, type Account, type Rule } from "../api/client";
+import { rulesApi, accountsApi, lookupsApi, transactionsApi, type Account, type Rule } from "../api/client";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { AccountIcon } from "./AccountsPage";
 import { Button } from "../components/ui/button";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Plus, Trash2, Pencil, Download, Upload, AlertCircle, ChevronLeft, ChevronRight, Bot } from "lucide-react";
+import { Plus, Trash2, Pencil, Download, Upload, AlertCircle, ChevronLeft, ChevronRight, Bot, Hash } from "lucide-react";
 import { formatAccountPath } from "../lib/utils";
 import { useRouter } from "@tanstack/react-router";
 
@@ -173,6 +173,11 @@ export function RulesPage() {
                   {rule.source === "import" && (
                     <Badge variant="outline" className="text-blue-600 border-blue-300">Imported</Badge>
                   )}
+                  {rule.tag && (
+                    <Badge variant="secondary" className="gap-0.5" title="Only transactions with this tag">
+                      <Hash className="h-3 w-3" /> {rule.tag}
+                    </Badge>
+                  )}
                 </div>
                 <div className="text-sm text-muted-foreground mt-0.5">
                   → {formatAccountPath(rule.target_account_path)}
@@ -245,7 +250,13 @@ function RuleDialog({
   const matchTypeId = chosenMatchTypeId || String(matchTypes[0]?.id ?? "");
   const [targetAccountId, setTargetAccountId] = useState(String(rule?.target_account_id ?? ""));
   const [priority, setPriority] = useState(String(rule?.priority ?? 0));
+  const [tag, setTag] = useState(rule?.tag ?? "");
   const [pickingCategory, setPickingCategory] = useState(false);
+  // Under the "transactions" key so tagging refreshes it
+  const { data: tags = [] } = useQuery({
+    queryKey: ["transactions", "tags"],
+    queryFn: transactionsApi.tags,
+  });
 
   const isCategory = (a: Account) => a.type === "expense" || a.type === "income";
   const target = accounts.find((a) => String(a.id) === targetAccountId);
@@ -259,11 +270,12 @@ function RuleDialog({
 
   // Live preview
   const previewQuery = useQuery({
-    queryKey: ["rule-preview", pattern, matchTypeId],
+    queryKey: ["rule-preview", pattern, matchTypeId, tag],
     queryFn: () =>
       rulesApi.preview({
         pattern,
         match_type_id: parseInt(matchTypeId),
+        tag: tag || null,
         exclude_rule_id: rule?.id,
       }),
     enabled: open && pattern.length >= 2 && !!matchTypeId,
@@ -296,6 +308,7 @@ function RuleDialog({
       priority: parseInt(priority) || 0,
       source: null,
       description: null,
+      tag: tag || null,
     };
 
     if (rule) {
@@ -352,6 +365,30 @@ function RuleDialog({
               />
             </div>
           </div>
+          {(tags.length > 0 || tag) && (
+            <div>
+              <label className="text-sm font-medium">Only when tagged</label>
+              <Select value={tag || "__any"} onValueChange={(v) => setTag(v === "__any" ? "" : v)}>
+                <SelectTrigger aria-label="Only when tagged">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__any">Any transaction</SelectItem>
+                  {tag && !tags.some((t) => t.name.toLowerCase() === tag.toLowerCase()) && (
+                    <SelectItem value={tag}>{tag}</SelectItem>
+                  )}
+                  {tags.map((t) => (
+                    <SelectItem key={t.name} value={t.name}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                For descriptions that mean different things for different people, such as who paid.
+              </p>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium">{targetIsAccount ? "Account" : "Category"}</label>
             {targetIsAccount ? (

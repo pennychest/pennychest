@@ -186,6 +186,17 @@ async fn upload_records_the_statement_summary() {
     )
     .await;
     account(&mut app, "Expenses:Uncategorised", "expense", json!({})).await;
+    // Only the rule for the cardholder on the statement line applies.
+    for (tag, path) in [("Alex", "Expenses:Alex"), ("becca", "Expenses:Becca")] {
+        let target = account(&mut app, path, "expense", json!({})).await;
+        app.post(
+            "/api/rules",
+            json!({"pattern": "TESCO", "match_type_id": 1, "target_account_id": target,
+                   "tag": tag}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+    }
     let response = upload(
         &mut app,
         "july.fake",
@@ -218,6 +229,12 @@ async fn upload_records_the_statement_summary() {
         .get(&format!("/api/transactions?batch_id={batch}"))
         .await;
     assert_eq!(imported.body[0]["tags"], json!(["Becca"]));
+    let review = app.get(&format!("/api/imports/batches/{batch}")).await.body;
+    assert_eq!(review["transactions"][0]["tags"], json!(["Becca"]));
+    assert_eq!(
+        review["transactions"][0]["target_account_full_path"],
+        "Expenses:Becca"
+    );
 }
 
 #[tokio::test]

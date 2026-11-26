@@ -359,6 +359,11 @@ pub struct CreateRuleInput {
     #[serde(default)]
     #[schemars(length(max = 200))]
     description: Option<String>,
+    /// Only match transactions with this tag (from list_tags), e.g. who paid, for
+    /// descriptions that mean different things for different people.
+    #[serde(default)]
+    #[schemars(length(min = 1, max = 60))]
+    tag: Option<String>,
 }
 
 fn ten() -> i64 {
@@ -393,11 +398,13 @@ pub async fn create_rule(db: &SqlitePool, input: CreateRuleInput) -> Result<Outp
     }
     let duplicate: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM rules
-         WHERE pattern = ? AND match_type_id = ? AND target_account_id = ?)",
+         WHERE pattern = ? AND match_type_id = ? AND target_account_id = ?
+           AND tag IS ? COLLATE NOCASE)",
     )
     .bind(&input.pattern)
     .bind(match_type as i64)
     .bind(category.id)
+    .bind(&input.tag)
     .fetch_one(db)
     .await?;
     if duplicate {
@@ -412,6 +419,7 @@ pub async fn create_rule(db: &SqlitePool, input: CreateRuleInput) -> Result<Outp
             priority: input.priority,
             source: "ai".into(),
             description: input.description,
+            tag: input.tag,
         },
     )
     .await
@@ -426,6 +434,7 @@ pub async fn create_rule(db: &SqlitePool, input: CreateRuleInput) -> Result<Outp
             "match_type": match_type.name(),
             "category": category.full_path,
             "priority": rule.priority,
+            "tag": rule.tag,
         },
     }))
     .with_change(

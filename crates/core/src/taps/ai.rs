@@ -82,7 +82,7 @@ pub async fn categorise(
     let mut conn = db.acquire().await?;
     if RuleSet::load(&mut conn)
         .await?
-        .first_match(&merchant)
+        .first_match(&merchant, &[])
         .is_some()
     {
         return Ok(());

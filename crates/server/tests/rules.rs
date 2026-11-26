@@ -43,7 +43,7 @@ async fn lists_rules_in_the_order_they_are_tried() {
             "id": 1, "pattern": "TESCO", "match_type_id": 1, "match_type_name": "substring",
             "target_account_id": rules[0]["target_account_id"],
             "target_account_path": "Expenses:Food:Groceries", "priority": 10,
-            "source": "manual", "description": null
+            "source": "manual", "description": null, "tag": null
         })
     );
 }
@@ -61,6 +61,35 @@ async fn a_null_source_is_a_manual_rule() {
         .await;
     created.assert_status(StatusCode::CREATED);
     assert_eq!(created.body["source"], "manual");
+}
+
+#[tokio::test]
+async fn a_rule_can_require_a_tag() {
+    let mut app = seeded().await;
+    let fuel = id_of(&mut app, "Expenses:Transport:Fuel").await;
+    let created = app
+        .post(
+            "/api/rules",
+            json!({"pattern": "SHELL", "match_type_id": 1, "target_account_id": fuel,
+                   "tag": "  Rebecca Bailey "}),
+        )
+        .await;
+    created.assert_status(StatusCode::CREATED);
+    assert_eq!(created.body["tag"], "Rebecca Bailey");
+    let id = created.body["id"].as_i64().unwrap();
+    let cleared = app
+        .put(&format!("/api/rules/{id}"), json!({"tag": null}))
+        .await
+        .body;
+    assert_eq!(cleared["tag"], Value::Null);
+    let exported = app.get("/api/rules/export").await.body;
+    let shell = exported
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["pattern"] == "SHELL")
+        .unwrap();
+    assert!(shell.get("tag").is_none());
 }
 
 #[tokio::test]

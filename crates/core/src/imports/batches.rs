@@ -312,7 +312,7 @@ async fn record(
     let mut created = Vec::with_capacity(rows.len());
     let transaction_count = rows.len();
     for row in rows {
-        let rule = rules.first_match(&row.description);
+        let rule = rules.first_match(&row.description, &row.tags);
         let (target, source, rule_id, transfer_rule) = match rule {
             Some(rule) => {
                 categorised += 1;
@@ -663,6 +663,8 @@ pub struct ReviewTransaction {
     pub duplicate_of: Option<DuplicateOf>,
     /// 0 (normal) to 1 (very unusual), once the insights model has judged it.
     pub unusual_score: Option<f64>,
+    /// Alphabetical.
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -783,6 +785,8 @@ async fn review_transactions(
     .bind(batch.id)
     .fetch_all(&mut *conn)
     .await?;
+    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+    let mut tags = crate::tags::for_transactions(&mut *conn, &ids).await?;
     let mut by_transaction: HashMap<i64, Vec<PostingRow>> = HashMap::new();
     for posting in postings {
         by_transaction
@@ -843,6 +847,7 @@ async fn review_transactions(
                 source_file_name: batch.file_name.clone(),
                 duplicate_of,
                 unusual_score: row.unusual_score,
+                tags: tags.remove(&row.id).unwrap_or_default(),
             }
         })
         .collect())
@@ -1007,14 +1012,18 @@ pub async fn reapply_rules(db: &SqlitePool, id: i64) -> Result<u64, ImportError>
     .fetch_all(&mut *tx)
     .await?;
 
+    let ids: Vec<i64> = categories.iter().map(|c| c.0).collect();
+    let tags = crate::tags::for_transactions(&mut *tx, &ids).await?;
+
     let mut updated = 0;
-    for (_, description, posting_id, current, source, current_rule) in categories {
+    for (transaction_id, description, posting_id, current, source, current_rule) in categories {
+        let tags = tags.get(&transaction_id).map_or(&[][..], Vec::as_slice);
         if source == CategorisationSource::Manual as i64
             || source == CategorisationSource::Transfer as i64
         {
             continue;
         }
-        let change = match rules.first_match(&description) {
+        let change = match rules.first_match(&description, tags) {
             Some(rule) if current != rule.target_account_id || current_rule != Some(rule.id) => {
                 Some((
                     rule.target_account_id,
@@ -1216,6 +1225,7 @@ mod tests {
                     priority: 0,
                     source: "manual".into(),
                     description: None,
+                    tag: None,
                 },
             )
             .await
@@ -1456,6 +1466,7 @@ mod tests {
                 priority: 0,
                 source: "manual".into(),
                 description: None,
+                tag: None,
             },
         )
         .await

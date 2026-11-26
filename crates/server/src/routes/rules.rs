@@ -67,6 +67,8 @@ struct PreviewBody {
     pattern: String,
     match_type_id: i64,
     #[serde(default)]
+    tag: Option<String>,
+    #[serde(default)]
     exclude_rule_id: Option<i64>,
 }
 
@@ -80,6 +82,7 @@ async fn preview(
             &state.db,
             &body.pattern,
             body.match_type_id,
+            body.tag.as_deref(),
             body.exclude_rule_id,
         )
         .await?,
