@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.12.0 (2026-11-26)
+
+### Added
+
+- ✨ Rules that require a tag, and tags on the review pages (#22)
+
 ## v0.11.2 (2026-11-26)
 
 ### Fixed
