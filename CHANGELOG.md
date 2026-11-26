@@ -7,6 +7,12 @@ All notable changes to this project are recorded here. The format follows
 Until 1.0.0 the API, database schema and plugin interface may still change between minor
 versions; anything breaking will be called out here.
 
+## v0.11.1 (2026-11-26)
+
+### Fixed
+
+- 🐛 Accept rules created with a null source (#20)
+
 ## v0.11.0 (2026-11-26)
 
 ### Added
