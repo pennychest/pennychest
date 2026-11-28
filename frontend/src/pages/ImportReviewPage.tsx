@@ -34,7 +34,7 @@ import {
 import { Input } from "../components/ui/input";
 import { ReviewTransactionRow } from "../components/ReviewTransactionRow";
 import { CategoryPicker } from "../components/CategoryPicker";
-import { formatCurrency, formatDate, formatAccountPath } from "../lib/utils";
+import { formatCurrency, formatDate, formatAccountPath, accountLabel } from "../lib/utils";
 import {
   Check,
   CheckCheck,
@@ -551,7 +551,7 @@ function TransferDialog({
               <SelectContent>
                 {otherAccounts.map((a) => (
                   <SelectItem key={a.id} value={String(a.id)}>
-                    {formatAccountPath(a.full_path)}
+                    {accountLabel(a, accounts)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -761,7 +761,7 @@ function CreateRuleFromImportDialog({
   onRuleCreated,
 }: {
   transaction: ImportTransaction;
-  accounts: { id: number; full_path: string }[];
+  accounts: Account[];
   matchTypes: { id: number; name: string }[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -866,7 +866,7 @@ function CreateRuleFromImportDialog({
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={String(a.id)}>
-                    {formatAccountPath(a.full_path)}
+                    {accountLabel(a, accounts)}
                   </SelectItem>
                 ))}
               </SelectContent>

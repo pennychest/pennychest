@@ -12,7 +12,16 @@ export function formatCurrency(amount: number, currency = "GBP"): string {
   }).format(amount);
 }
 
-const TOP_LEVEL_ACCOUNTS = new Set(["Expenses", "Income", "Assets", "Liabilities", "Equity"]);
+type NamedAccount = { id: number; name: string; full_path: string; parent_id: number | null; type: string };
+
+/** A bank account or card by its name, with its group ("Alex HSBC (Credit Card)"); categories keep their path. */
+export function accountLabel(account: NamedAccount, accounts: NamedAccount[]): string {
+  if (account.type !== "asset" && account.type !== "liability") return formatAccountPath(account.full_path);
+  const parent = accounts.find((a) => a.id === account.parent_id);
+  return parent && parent.parent_id !== null ? `${account.name} (${parent.name})` : account.name;
+}
+
+const TOP_LEVEL_ACCOUNTS =new Set(["Expenses", "Income", "Assets", "Liabilities", "Equity"]);
 
 export function formatAccountPath(path: string | null | undefined): string {
   if (!path) return "Unknown account";

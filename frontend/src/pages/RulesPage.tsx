@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Plus, Trash2, Pencil, Download, Upload, AlertCircle, ChevronLeft, ChevronRight, Bot, Hash } from "lucide-react";
-import { formatAccountPath } from "../lib/utils";
+import { formatAccountPath, accountLabel } from "../lib/utils";
 import { useRouter } from "@tanstack/react-router";
 
 export function RulesPage() {
@@ -399,7 +399,7 @@ function RuleDialog({
                 <SelectContent>
                   {accounts.filter((a) => !isCategory(a)).map((a) => (
                     <SelectItem key={a.id} value={String(a.id)}>
-                      {formatAccountPath(a.full_path)}
+                      {accountLabel(a, accounts)}
                     </SelectItem>
                   ))}
                 </SelectContent>
