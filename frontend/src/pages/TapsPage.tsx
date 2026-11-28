@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { cn, formatAccountPath, formatCurrency, formatDate } from "../lib/utils";
+import { cn, formatAccountPath, accountLabel, formatCurrency, formatDate } from "../lib/utils";
 
 const TABS: { value: TapStatus; label: string }[] = [
   { value: "unmatched", label: "Awaiting statement" },
@@ -266,7 +266,7 @@ function CardPairingRow({
           <SelectItem value={UNPAIRED}>Not paired</SelectItem>
           {accounts.map((a) => (
             <SelectItem key={a.id} value={String(a.id)}>
-              {formatAccountPath(a.full_path)}
+              {accountLabel(a, accounts)}
             </SelectItem>
           ))}
         </SelectContent>

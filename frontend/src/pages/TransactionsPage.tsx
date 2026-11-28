@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { transactionsApi, accountsApi, importsApi, lookupsApi, type TagCount, type Transaction } from "../api/client";
+import { transactionsApi, accountsApi, importsApi, lookupsApi, type Account, type TagCount, type Transaction } from "../api/client";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { AccountIcon } from "./AccountsPage";
 import { Button } from "../components/ui/button";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { cn, formatCurrency, formatDate, formatAccountPath } from "../lib/utils";
+import { cn, formatCurrency, formatDate, formatAccountPath, accountLabel } from "../lib/utils";
 import { ArrowLeftRight, CalendarDays, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, CheckCheck, CreditCard, Hash, Pencil, Plus, Settings2, Tag, Trash2, X } from "lucide-react";
 
 type DatePreset = "all" | "this-month" | "last-month" | "last-3-months" | "this-year" | "custom";
@@ -878,7 +878,7 @@ function CreateTransactionDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  accounts: { id: number; full_path: string }[];
+  accounts: Account[];
   manualSourceId: number;
 }) {
   const queryClient = useQueryClient();
@@ -965,7 +965,7 @@ function CreateTransactionDialog({
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={String(a.id)}>
-                    {formatAccountPath(a.full_path)}
+                    {accountLabel(a, accounts)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -980,7 +980,7 @@ function CreateTransactionDialog({
               <SelectContent>
                 {accounts.map((a) => (
                   <SelectItem key={a.id} value={String(a.id)}>
-                    {formatAccountPath(a.full_path)}
+                    {accountLabel(a, accounts)}
                   </SelectItem>
                 ))}
               </SelectContent>
